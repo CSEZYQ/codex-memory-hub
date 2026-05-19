@@ -42,7 +42,14 @@ docs/wiki/decisions.md
 docs/wiki/session-log.md
 docs/wiki/ideas.md
 docs/wiki/log.md
+docs/wiki/inbox/
 ```
+
+## 并行任务
+
+同一个项目里可以开多个 Codex 线程同时工作，但不要让它们同时改 `AGENTS.md` 和 `docs/wiki` 里的核心记忆文件。
+
+推荐做法是：一个主线程负责更新项目记忆；其他工作线程只读记忆、输出自己的产物。需要交接时，工作线程把结果写到自己的输出目录，或在 `docs/wiki/inbox/` 里写一个带日期和任务名的独立交接文件，最后由主线程统一汇总进项目记忆。
 
 ## 包含内容
 

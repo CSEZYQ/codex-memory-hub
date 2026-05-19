@@ -47,6 +47,7 @@ if [ -z "$PROJECT_NAME" ]; then
 fi
 
 WIKI_ROOT="$PROJECT_ROOT/docs/wiki"
+INBOX_ROOT="$WIKI_ROOT/inbox"
 TODAY=$(date +%Y-%m-%d)
 
 write_file_if_needed() {
@@ -64,7 +65,7 @@ write_file_if_needed() {
   echo "write: $file_path"
 }
 
-mkdir -p "$WIKI_ROOT"
+mkdir -p "$INBOX_ROOT"
 
 AGENTS_CONTENT=$(cat <<EOF
 # $PROJECT_NAME Agent Rules
@@ -99,6 +100,16 @@ Before the final response, check whether this turn changed project state, decisi
 
 Keep writebacks short and durable. Do not paste full chat transcripts.
 
+## Concurrent Work
+
+If multiple Codex threads work in this project at the same time, shared memory files are single-writer.
+
+- The coordinator or main thread updates docs/wiki/current-status.md, docs/wiki/next-actions.md, docs/wiki/decisions.md, docs/wiki/session-log.md, docs/wiki/ideas.md, and docs/wiki/log.md.
+- Worker threads do not edit AGENTS.md or shared docs/wiki files unless the user explicitly assigns memory ownership to that thread.
+- Worker threads write deliverables to their assigned output directories.
+- If a worker thread needs to leave durable context, write a unique handoff note under docs/wiki/inbox/.
+- The coordinator thread later merges useful handoff notes into the shared memory files.
+
 ## Memory Layers
 
 - raw: original source material
@@ -118,6 +129,7 @@ INDEX_CONTENT=$(cat <<EOF
 - [session-log.md](./session-log.md)
 - [ideas.md](./ideas.md)
 - [log.md](./log.md)
+- [inbox/](./inbox/)
 EOF
 )
 
@@ -254,6 +266,7 @@ write_file_if_needed "$WIKI_ROOT/decisions.md" "$DECISIONS_CONTENT"
 write_file_if_needed "$WIKI_ROOT/session-log.md" "$SESSION_CONTENT"
 write_file_if_needed "$WIKI_ROOT/ideas.md" "$IDEAS_CONTENT"
 write_file_if_needed "$WIKI_ROOT/log.md" "$LOG_CONTENT"
+write_file_if_needed "$INBOX_ROOT/.gitkeep" ""
 
 echo ""
 echo "Codex memory initialized:"

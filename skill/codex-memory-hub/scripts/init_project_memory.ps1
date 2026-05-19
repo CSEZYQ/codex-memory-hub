@@ -22,6 +22,7 @@ if ([string]::IsNullOrWhiteSpace($ProjectName)) {
 }
 
 $WikiRoot = Join-Path (Join-Path $ProjectRoot "docs") "wiki"
+$InboxRoot = Join-Path $WikiRoot "inbox"
 $Today = Get-Date -Format "yyyy-MM-dd"
 
 function Write-FileIfNeeded {
@@ -42,7 +43,7 @@ function Write-FileIfNeeded {
     Write-Host "write: $FilePath"
 }
 
-New-Item -ItemType Directory -Force -Path $WikiRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $InboxRoot | Out-Null
 
 $agents = @"
 # $ProjectName Agent Rules
@@ -77,6 +78,16 @@ Before the final response, check whether this turn changed project state, decisi
 
 Keep writebacks short and durable. Do not paste full chat transcripts.
 
+## Concurrent Work
+
+If multiple Codex threads work in this project at the same time, shared memory files are single-writer.
+
+- The coordinator or main thread updates docs/wiki/current-status.md, docs/wiki/next-actions.md, docs/wiki/decisions.md, docs/wiki/session-log.md, docs/wiki/ideas.md, and docs/wiki/log.md.
+- Worker threads do not edit AGENTS.md or shared docs/wiki files unless the user explicitly assigns memory ownership to that thread.
+- Worker threads write deliverables to their assigned output directories.
+- If a worker thread needs to leave durable context, write a unique handoff note under docs/wiki/inbox/.
+- The coordinator thread later merges useful handoff notes into the shared memory files.
+
 ## Memory Layers
 
 - raw: original source material
@@ -95,6 +106,7 @@ $index = @"
 - [session-log.md](./session-log.md)
 - [ideas.md](./ideas.md)
 - [log.md](./log.md)
+- [inbox/](./inbox/)
 "@
 
 $overview = @"
@@ -223,6 +235,7 @@ Write-FileIfNeeded (Join-Path $WikiRoot "decisions.md") $decisions
 Write-FileIfNeeded (Join-Path $WikiRoot "session-log.md") $session
 Write-FileIfNeeded (Join-Path $WikiRoot "ideas.md") $ideas
 Write-FileIfNeeded (Join-Path $WikiRoot "log.md") $log
+Write-FileIfNeeded (Join-Path $InboxRoot ".gitkeep") ""
 
 Write-Host ""
 Write-Host "Codex memory initialized:"

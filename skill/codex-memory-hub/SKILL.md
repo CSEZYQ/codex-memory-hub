@@ -36,6 +36,7 @@ The script creates:
 - `docs/wiki/session-log.md`
 - `docs/wiki/ideas.md`
 - `docs/wiki/log.md`
+- `docs/wiki/inbox/`
 
 It skips existing files by default. Use `-Force` in PowerShell or `--force` in shell only when the user explicitly wants to overwrite an existing memory scaffold.
 
@@ -52,6 +53,20 @@ When working in a project that has memory files, read these before acting on non
 
 If the user says "continue", "use project memory", "read project memory", or starts a task in a project with these files, use this protocol.
 
+## Concurrent Work Protocol
+
+Multiple Codex threads may read the same project memory, but shared memory files are single-writer by default.
+
+When several threads are working in the same project:
+
+- The coordinator or main thread owns shared memory writeback.
+- Worker threads must not edit `AGENTS.md` or shared files such as `docs/wiki/current-status.md`, `docs/wiki/next-actions.md`, `docs/wiki/decisions.md`, `docs/wiki/session-log.md`, `docs/wiki/ideas.md`, or `docs/wiki/log.md`, unless the user explicitly assigns that thread as the memory owner.
+- Worker threads should write deliverables to their assigned output directories.
+- If a worker thread needs to leave durable context, write a unique handoff note under `docs/wiki/inbox/`, for example `docs/wiki/inbox/2026-05-19-ppt-images-thread-01.md`.
+- The coordinator thread later reads those handoff notes and merges the useful facts into the shared memory files.
+
+Do not solve normal parallel work by having every thread rewrite the same memory files. Prefer one shared-memory writer plus many read-only workers with unique handoff files.
+
 ## Writeback Protocol
 
 After meaningful work, update memory without waiting for the user to ask:
@@ -62,6 +77,8 @@ After meaningful work, update memory without waiting for the user to ask:
 - Session summary: `docs/wiki/session-log.md`
 - Loose ideas: `docs/wiki/ideas.md`
 - Chronological maintenance notes: `docs/wiki/log.md`
+
+Only perform this shared writeback when this thread is the only active thread or is the coordinator/main thread. If this is a worker thread in a parallel task, use the Concurrent Work Protocol instead.
 
 If code changed in a way that future sessions must know about, the task is not complete until the relevant memory files are updated.
 
@@ -77,7 +94,7 @@ Keep writebacks concise. Record durable context, not full chat transcripts.
 
 ## Multi-Project Rule
 
-Keep each project’s memory inside that project. Do not mix multiple applications into one project page.
+Keep each project's memory inside that project. Do not mix multiple applications into one project page.
 
 Use a central Memory Hub only for:
 
