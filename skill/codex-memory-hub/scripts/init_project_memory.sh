@@ -47,7 +47,7 @@ if [ -z "$PROJECT_NAME" ]; then
 fi
 
 WIKI_ROOT="$PROJECT_ROOT/docs/wiki"
-INBOX_ROOT="$WIKI_ROOT/inbox"
+THREAD_MEMORY_ROOT="$WIKI_ROOT/thread-memory"
 TODAY=$(date +%Y-%m-%d)
 
 write_file_if_needed() {
@@ -65,211 +65,101 @@ write_file_if_needed() {
   echo "write: $file_path"
 }
 
-mkdir -p "$INBOX_ROOT"
+mkdir -p "$THREAD_MEMORY_ROOT"
 
 AGENTS_CONTENT=$(cat <<EOF
 # $PROJECT_NAME Agent Rules
 
-This project uses Codex project memory. Do not rely only on the current chat context.
+This project uses Codex thread memory. Do not rely only on the current chat context, and do not force every thread to maintain shared project status files.
 
 ## Startup
 
-For non-trivial work, read these files before acting:
+For non-trivial work:
 
-1. docs/wiki/index.md
-2. docs/wiki/current-status.md
-3. docs/wiki/next-actions.md
-4. docs/wiki/decisions.md
-5. docs/wiki/session-log.md
+1. Read docs/wiki/index.md.
+2. Read docs/wiki/project.md if it exists.
+3. List every file under docs/wiki/thread-memory/.
+4. Ask the user whether to create a new thread memory file or reuse an existing one.
 
-If a file is empty or incomplete, update it as the project becomes clearer.
+If there is no thread memory file, create a new one. If the user explicitly names a thread memory file or a specific workstream, use that file directly.
+
+For parallel Codex work, create separate thread memory files. Reuse an existing thread memory file only when continuing the same workstream serially.
+
+## Thread Memory
+
+Store thread memory under docs/wiki/thread-memory/ with a unique filename:
+
+YYYY-MM-DD-HHMM-<short-task>.md
+
+Each thread memory file should include:
+
+- thread name
+- created time
+- updated time
+- status: active, done, or archived
+- scope
+- current context
+- timeline
+- outputs
+- decisions
+- problems
+- next steps
 
 ## Writeback
 
-After meaningful work, update project memory without waiting for the user to ask:
+At the end of meaningful work, update only the selected thread memory file.
 
-- Current state: docs/wiki/current-status.md
-- Next steps: docs/wiki/next-actions.md
-- Decisions: docs/wiki/decisions.md
-- Session summary: docs/wiki/session-log.md
-- Loose ideas: docs/wiki/ideas.md
+Do not automatically update shared project summary files such as current-status.md, next-actions.md, decisions.md, or session-log.md. Project-level files are optional stable background, not live truth.
 
-Code changes without memory writeback are incomplete when the work affects future context.
+Only update docs/wiki/project.md or create a project-level summary when the user explicitly asks to summarize, consolidate, or update project-level memory.
 
-Before the final response, check whether this turn changed project state, decisions, next steps, risks, or ideas. If yes, update the relevant memory files first, then answer the user.
-
-Keep writebacks short and durable. Do not paste full chat transcripts.
-
-## Concurrent Work
-
-If multiple Codex threads work in this project at the same time, shared memory files are single-writer.
-
-- The coordinator or main thread updates docs/wiki/current-status.md, docs/wiki/next-actions.md, docs/wiki/decisions.md, docs/wiki/session-log.md, docs/wiki/ideas.md, and docs/wiki/log.md.
-- Worker threads do not edit AGENTS.md or shared docs/wiki files unless the user explicitly assigns memory ownership to that thread.
-- Worker threads write deliverables to their assigned output directories.
-- If a worker thread needs to leave durable context, write a unique handoff note under docs/wiki/inbox/.
-- The coordinator thread later merges useful handoff notes into the shared memory files.
-
-## Memory Layers
-
-- raw: original source material
-- wiki: compiled project knowledge
-- state: current status, decisions, next actions, session log
-- code: implementation
+If the selected thread memory file changed while this thread was preparing to write, re-read it and append carefully. If a safe append is not possible, create a new sibling file with a -fork-<shortid> suffix and mark which file it forked from.
 EOF
 )
 
 INDEX_CONTENT=$(cat <<EOF
 # Wiki Index
 
-- [project-overview.md](./project-overview.md)
-- [current-status.md](./current-status.md)
-- [next-actions.md](./next-actions.md)
-- [decisions.md](./decisions.md)
-- [session-log.md](./session-log.md)
-- [ideas.md](./ideas.md)
-- [log.md](./log.md)
-- [inbox/](./inbox/)
+- [project.md](./project.md)
+- [thread-memory/](./thread-memory/)
 EOF
 )
 
-OVERVIEW_CONTENT=$(cat <<EOF
+PROJECT_CONTENT=$(cat <<EOF
 ---
-title: Project Overview
-source: session
+title: Project Background
+source: project
 created: $TODAY
-tags: [overview]
-status: draft
+updated: $TODAY
+status: optional
 ---
 
-# $PROJECT_NAME Project Overview
+# $PROJECT_NAME Project Background
 
-Purpose:
+This file is optional stable background. It is not a live status tracker.
+
+## Purpose
 
 - TBD
 
-Users / audience:
+## Stable Context
 
 - TBD
 
-Core workflows:
+## Notes
 
-- TBD
-EOF
-)
-
-CURRENT_CONTENT=$(cat <<EOF
----
-title: Current Status
-source: session
-created: $TODAY
-tags: [status]
-status: current
----
-
-# Current Status
-
-## Working State
-
-- Project memory initialized on $TODAY.
-
-## Known Risks
-
-- TBD
-EOF
-)
-
-NEXT_CONTENT=$(cat <<EOF
----
-title: Next Actions
-source: session
-created: $TODAY
-tags: [next-actions]
-status: current
----
-
-# Next Actions
-
-- Define the project goal.
-- Record the current implementation state.
-- Add the first real next step after the next Codex session.
-EOF
-)
-
-DECISIONS_CONTENT=$(cat <<EOF
----
-title: Decisions
-source: session
-created: $TODAY
-tags: [decisions]
-status: current
----
-
-# Decisions
-
-## $TODAY
-
-- Initialized Codex project memory for $PROJECT_NAME.
-EOF
-)
-
-SESSION_CONTENT=$(cat <<EOF
----
-title: Session Log
-source: session
-created: $TODAY
-tags: [session-log]
-status: current
----
-
-# Session Log
-
-## $TODAY | Memory Initialized
-
-- Created project memory files for $PROJECT_NAME.
-- Future Codex sessions should read AGENTS.md and docs/wiki/index.md first.
-EOF
-)
-
-IDEAS_CONTENT=$(cat <<EOF
----
-title: Ideas
-source: session
-created: $TODAY
-tags: [ideas]
-status: current
----
-
-# Ideas
-
-## Inbox
-
-- TBD
-EOF
-)
-
-LOG_CONTENT=$(cat <<EOF
-# Log
-
-## $TODAY | Memory Initialized
-
-- Added Codex project memory structure.
+- Thread work logs live in docs/wiki/thread-memory/.
 EOF
 )
 
 write_file_if_needed "$PROJECT_ROOT/AGENTS.md" "$AGENTS_CONTENT"
 write_file_if_needed "$WIKI_ROOT/index.md" "$INDEX_CONTENT"
-write_file_if_needed "$WIKI_ROOT/project-overview.md" "$OVERVIEW_CONTENT"
-write_file_if_needed "$WIKI_ROOT/current-status.md" "$CURRENT_CONTENT"
-write_file_if_needed "$WIKI_ROOT/next-actions.md" "$NEXT_CONTENT"
-write_file_if_needed "$WIKI_ROOT/decisions.md" "$DECISIONS_CONTENT"
-write_file_if_needed "$WIKI_ROOT/session-log.md" "$SESSION_CONTENT"
-write_file_if_needed "$WIKI_ROOT/ideas.md" "$IDEAS_CONTENT"
-write_file_if_needed "$WIKI_ROOT/log.md" "$LOG_CONTENT"
-write_file_if_needed "$INBOX_ROOT/.gitkeep" ""
+write_file_if_needed "$WIKI_ROOT/project.md" "$PROJECT_CONTENT"
+write_file_if_needed "$THREAD_MEMORY_ROOT/.gitkeep" ""
 
 echo ""
-echo "Codex memory initialized:"
-echo "- Project: $PROJECT_ROOT"
-echo "- Entry:   $PROJECT_ROOT/AGENTS.md"
-echo "- Wiki:    $WIKI_ROOT"
+echo "Codex thread memory initialized:"
+echo "- Project:       $PROJECT_ROOT"
+echo "- Entry:         $PROJECT_ROOT/AGENTS.md"
+echo "- Wiki:          $WIKI_ROOT"
+echo "- Thread memory: $THREAD_MEMORY_ROOT"

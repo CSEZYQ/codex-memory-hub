@@ -1,11 +1,11 @@
 ---
 name: codex-memory-hub
-description: Use when the user creates a project, asks to set up Codex memory, wants context to survive restarted threads, asks for Memory Hub, or needs project startup/state files such as current-status, next-actions, decisions, session-log, and ideas.
+description: Use when the user creates a project, asks to set up Codex memory, wants context to survive restarted threads, wants per-thread memory for parallel Codex work, asks for Memory Hub, or needs Codex to create, list, reuse, or write thread memory files.
 ---
 
 # Codex Memory Hub
 
-Use this skill to make a project restartable across Codex threads. It is cross-platform: Windows, macOS, and Linux should all use the same project memory layout.
+Use this skill to make Codex work restartable without forcing every thread to maintain shared project status files. The default memory unit is one file per Codex thread.
 
 ## Initialize A Project
 
@@ -29,68 +29,83 @@ The script creates:
 
 - `AGENTS.md`
 - `docs/wiki/index.md`
-- `docs/wiki/project-overview.md`
-- `docs/wiki/current-status.md`
-- `docs/wiki/next-actions.md`
-- `docs/wiki/decisions.md`
-- `docs/wiki/session-log.md`
-- `docs/wiki/ideas.md`
-- `docs/wiki/log.md`
-- `docs/wiki/inbox/`
+- `docs/wiki/project.md`
+- `docs/wiki/thread-memory/`
 
 It skips existing files by default. Use `-Force` in PowerShell or `--force` in shell only when the user explicitly wants to overwrite an existing memory scaffold.
 
 ## Startup Protocol
 
-When working in a project that has memory files, read these before acting on non-trivial work:
+When working in a project that has Codex Memory Hub files:
 
-1. `AGENTS.md`
-2. `docs/wiki/index.md`
-3. `docs/wiki/current-status.md`
-4. `docs/wiki/next-actions.md`
-5. `docs/wiki/decisions.md`
-6. `docs/wiki/session-log.md` or `docs/wiki/log.md`
+1. Read `AGENTS.md`.
+2. Read `docs/wiki/index.md`.
+3. Read `docs/wiki/project.md` if it exists.
+4. Scan `docs/wiki/thread-memory/*.md`.
+5. List every thread memory file for the user, including filename plus any visible `status`, `updated`, and `scope` metadata.
+6. Ask the user to choose whether to create a new thread memory file or reuse an existing one.
 
-If the user says "continue", "use project memory", "read project memory", or starts a task in a project with these files, use this protocol.
+If no thread memory file exists, create one. If the user explicitly names a thread memory file or says to continue a specific workstream, use that file directly.
 
-## Concurrent Work Protocol
+For parallel Codex work, create separate thread memory files. Reuse a thread memory file only when continuing the same workstream serially.
 
-Multiple Codex threads may read the same project memory, but shared memory files are single-writer by default.
+## Thread Memory Files
 
-When several threads are working in the same project:
+Create thread memory files under `docs/wiki/thread-memory/` with unique names:
 
-- The coordinator or main thread owns shared memory writeback.
-- Worker threads must not edit `AGENTS.md` or shared files such as `docs/wiki/current-status.md`, `docs/wiki/next-actions.md`, `docs/wiki/decisions.md`, `docs/wiki/session-log.md`, `docs/wiki/ideas.md`, or `docs/wiki/log.md`, unless the user explicitly assigns that thread as the memory owner.
-- Worker threads should write deliverables to their assigned output directories.
-- If a worker thread needs to leave durable context, write a unique handoff note under `docs/wiki/inbox/`, for example `docs/wiki/inbox/2026-05-19-ppt-images-thread-01.md`.
-- The coordinator thread later reads those handoff notes and merges the useful facts into the shared memory files.
+```text
+YYYY-MM-DD-HHMM-<short-task>.md
+```
 
-Do not solve normal parallel work by having every thread rewrite the same memory files. Prefer one shared-memory writer plus many read-only workers with unique handoff files.
+Use this structure:
+
+```markdown
+---
+thread: <short name>
+created: <YYYY-MM-DD HH:mm>
+updated: <YYYY-MM-DD HH:mm>
+status: active
+scope: <task scope>
+---
+
+# <Thread Name>
+
+## Current Context
+
+- ...
+
+## Timeline
+
+- <timestamp> - ...
+
+## Outputs
+
+- ...
+
+## Decisions
+
+- ...
+
+## Problems
+
+- ...
+
+## Next
+
+- ...
+```
+
+Keep thread memory factual. It is a work log, not a final project truth.
 
 ## Writeback Protocol
 
-After meaningful work, update memory without waiting for the user to ask:
+At the end of meaningful work, update the selected thread memory file. Record what changed, outputs, decisions, problems, and useful next steps.
 
-- Current state: `docs/wiki/current-status.md`
-- Next steps: `docs/wiki/next-actions.md`
-- Important decisions: `docs/wiki/decisions.md`
-- Session summary: `docs/wiki/session-log.md`
-- Loose ideas: `docs/wiki/ideas.md`
-- Chronological maintenance notes: `docs/wiki/log.md`
+Do not automatically update shared project summary files such as `current-status.md`, `next-actions.md`, `decisions.md`, or `session-log.md`. These files are not part of the default model anymore.
 
-Only perform this shared writeback when this thread is the only active thread or is the coordinator/main thread. If this is a worker thread in a parallel task, use the Concurrent Work Protocol instead.
+Project-level files are optional stable background. Update `docs/wiki/project.md` or create a project summary only when the user explicitly asks to summarize, consolidate, or update project-level memory.
 
-If code changed in a way that future sessions must know about, the task is not complete until the relevant memory files are updated.
-
-Before the final response, do this quick check:
-
-- Did project state change? Update `docs/wiki/current-status.md`.
-- Did the next step change? Update `docs/wiki/next-actions.md`.
-- Was a durable decision made? Update `docs/wiki/decisions.md`.
-- Would a future thread need a summary? Append `docs/wiki/session-log.md`.
-- Did the user express a loose idea? Update `docs/wiki/ideas.md`.
-
-Keep writebacks concise. Record durable context, not full chat transcripts.
+If the selected thread memory file changed while this thread was preparing to write, re-read the latest file and append carefully. If a safe append is not possible, create a new sibling thread memory file with a `-fork-<shortid>` suffix and clearly mark which file it forked from.
 
 ## Multi-Project Rule
 

@@ -1,29 +1,29 @@
 {
   "name": "codex-memory-hub",
-  "version": "1.0.0",
-  "description": "Codex project memory plugin for restartable project work.",
+  "version": "1.1.0",
+  "description": "Codex thread memory plugin for restartable project work.",
   "license": "MIT",
   "keywords": [
     "codex",
     "memory",
-    "project-state",
+    "thread-memory",
     "skills",
     "cross-platform"
   ],
   "skills": "./skill/",
   "interface": {
     "displayName": "Codex Memory Hub",
-    "shortDescription": "Project memory scaffold for restartable Codex work.",
-    "longDescription": "Initializes project-level memory files for Windows, macOS, and Linux. It keeps goals, state, decisions, next actions, ideas, and session summaries inside each project.",
+    "shortDescription": "Thread memory scaffold for restartable Codex work.",
+    "longDescription": "Initializes lightweight Codex memory files for Windows, macOS, and Linux. Each Codex thread can keep its own memory file, which avoids shared project-memory conflicts during parallel work.",
     "developerName": "Codex Memory Hub",
     "category": "Productivity",
     "capabilities": [
       "Write"
     ],
     "defaultPrompt": [
-      "Initialize Codex memory for this project.",
-      "Read project memory and continue.",
-      "Write back current project memory."
+      "Initialize Codex thread memory for this project.",
+      "List thread memories and continue.",
+      "Create a new thread memory for this task."
     ],
     "brandColor": "#2563EB"
   }

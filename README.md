@@ -1,8 +1,8 @@
 # Codex Memory Hub
 
-这是一个让 Codex 项目可以跨新线程续接的记忆插件。
+这是一个让 Codex 工作可以跨新线程续接的记忆插件。
 
-它会在项目里建立一套轻量级记忆文件，用来保存项目目标、当前状态、下一步、关键决定、想法和会话记录。这样重新打开 Codex 时，它可以先读项目记忆，再继续工作，而不是只依赖当前聊天上下文。
+它现在采用“线程记忆”模型：每个 Codex 线程写自己的记忆文件，项目级文件只保留入口规则和稳定背景。这样同一个项目里开多个线程并行做 PPT、图片、代码或资料整理时，不会反复抢写同一个项目记忆文件。
 
 ## 安装
 
@@ -22,9 +22,7 @@ skill/codex-memory-hub/SKILL.md
 
 ## 使用
 
-安装后，不需要用户手动运行脚本：如果当前项目还没有 `AGENTS.md` 和 `docs/wiki`，Codex 会提醒你是否初始化项目记忆；如果项目已经有记忆，新线程会自动读取这些文件并继续上次进度。
-
-你也可以直接说：
+安装后，在项目目录里可以直接说：
 
 ```text
 给这个项目初始化 Codex 记忆。
@@ -35,21 +33,19 @@ skill/codex-memory-hub/SKILL.md
 ```text
 AGENTS.md
 docs/wiki/index.md
-docs/wiki/project-overview.md
-docs/wiki/current-status.md
-docs/wiki/next-actions.md
-docs/wiki/decisions.md
-docs/wiki/session-log.md
-docs/wiki/ideas.md
-docs/wiki/log.md
-docs/wiki/inbox/
+docs/wiki/project.md
+docs/wiki/thread-memory/
 ```
 
-## 并行任务
+新线程开始时，Codex 应该列出 `docs/wiki/thread-memory/` 里的全部线程记忆文件，让用户选择“新建一个线程记忆”或“复用某个已有线程记忆”。
 
-同一个项目里可以开多个 Codex 线程同时工作，但不要让它们同时改 `AGENTS.md` 和 `docs/wiki` 里的核心记忆文件。
+并行任务建议新建不同的线程记忆文件；只有继续同一个工作流时才复用原文件。
 
-推荐做法是：一个主线程负责更新项目记忆；其他工作线程只读记忆、输出自己的产物。需要交接时，工作线程把结果写到自己的输出目录，或在 `docs/wiki/inbox/` 里写一个带日期和任务名的独立交接文件，最后由主线程统一汇总进项目记忆。
+## 记忆规则
+
+线程记忆记录过程，项目文件只保存稳定背景。
+
+默认不再维护 `current-status.md`、`next-actions.md`、`decisions.md`、`session-log.md` 这类公共状态页。用户明确要求“汇总项目记忆”或“整理所有线程”时，Codex 再从线程记忆里整理项目级总结。
 
 ## 包含内容
 
