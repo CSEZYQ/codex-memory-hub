@@ -1,6 +1,6 @@
 ---
 name: codex-memory-hub
-description: Use when the user creates a project, asks to set up Codex memory, wants context to survive restarted threads, wants clean per-thread memory for parallel Codex work, asks for Memory Hub, or needs Codex to create, list, reuse, or write thread/workstream memory files.
+description: Use when the user creates a project, asks to set up Codex memory, wants context to survive restarted threads, wants clean per-thread memory for parallel Codex work, asks for Memory Hub, needs legacy docs/wiki memory migrated, or needs Codex to create, list, reuse, or write thread/workstream memory files.
 ---
 
 # Codex Memory Hub
@@ -41,6 +41,14 @@ The script creates:
 
 It skips existing files by default. Use `-Force` in PowerShell or `--force` in shell only when the user explicitly wants to overwrite an existing memory scaffold.
 
+If a project already has legacy `docs/wiki/` memory, the initializer migrates it automatically:
+
+- Copy legacy thread memories into `.codex-memory/threads/`.
+- Preserve legacy files under `.codex-memory/archive/legacy-docs-wiki...`.
+- Create a `legacy-migration` workstream event.
+- Remove the empty legacy `docs/` folder when it is safe.
+- In Git repositories, add `.codex-memory/` to `.gitignore` by default.
+
 ## Startup Protocol
 
 When working in a project that has Codex Memory Hub files:
@@ -55,7 +63,7 @@ When working in a project that has Codex Memory Hub files:
 
 If no thread memory file exists, create one. If the user explicitly names a thread memory file or says to continue a specific workstream, use that file directly.
 
-For legacy projects that still use `docs/wiki/`, read those files as historical context, but create new memory under `.codex-memory/` unless the user explicitly asks to keep the old layout.
+For legacy projects that still use `docs/wiki/`, migrate them into `.codex-memory/` automatically before normal work. Do not make the user manually reorganize old memory files. After migration, read legacy content from `.codex-memory/archive/` as historical context.
 
 ## Thread Memory Files
 
@@ -124,6 +132,22 @@ Workstream layout:
 - `events/` stores append-only event files from individual threads.
 
 Each thread may write its own event file under `events/` when it pauses, finishes, hits a blocker, or hands off important context. Prefer unique event files over rewriting a shared live status file.
+
+Before creating a workstream, list existing workstreams and reuse a matching one. If a duplicate is discovered later, mark the duplicate as archived and add `superseded_by` instead of deleting it.
+
+Use unique event filenames:
+
+```text
+YYYY-MM-DD-HHMMSS-<thread-or-task>-<event>.md
+```
+
+## Privacy And Git
+
+Do not write secrets, API keys, passwords, access tokens, private credentials, or sensitive raw source material into memory files. Record only the fact that such material exists and where the user-approved source lives.
+
+In Git projects, `.codex-memory/` is local by default and should stay in `.gitignore` unless the user explicitly wants to share memory through the repository.
+
+If the user wants shared team memory, explain the tradeoff first: committing `.codex-memory/` improves team continuity but may expose private decisions, local paths, prompts, or sensitive project details.
 
 ## Writeback Protocol
 
