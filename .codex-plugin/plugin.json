@@ -1,29 +1,30 @@
 {
   "name": "codex-memory-hub",
-  "version": "1.1.0",
-  "description": "Codex thread memory plugin for restartable project work.",
+  "version": "1.2.0",
+  "description": "Codex memory plugin for clean, restartable, parallel project work.",
   "license": "MIT",
   "keywords": [
     "codex",
     "memory",
     "thread-memory",
+    "workstream",
     "skills",
     "cross-platform"
   ],
   "skills": "./skill/",
   "interface": {
     "displayName": "Codex Memory Hub",
-    "shortDescription": "Thread memory scaffold for restartable Codex work.",
-    "longDescription": "Initializes lightweight Codex memory files for Windows, macOS, and Linux. Each Codex thread can keep its own memory file, which avoids shared project-memory conflicts during parallel work.",
+    "shortDescription": "Clean thread and workstream memory for Codex work.",
+    "longDescription": "Initializes a clean Codex memory layout for Windows, macOS, and Linux. The project root keeps only AGENTS.md while all memory data lives under .codex-memory with per-thread logs, workstream coordination, and archive folders.",
     "developerName": "Codex Memory Hub",
     "category": "Productivity",
     "capabilities": [
       "Write"
     ],
     "defaultPrompt": [
-      "Initialize Codex thread memory for this project.",
+      "Initialize Codex Memory Hub for this project.",
       "List thread memories and continue.",
-      "Create a new thread memory for this task."
+      "Create a new thread memory or workstream for this task."
     ],
     "brandColor": "#2563EB"
   }

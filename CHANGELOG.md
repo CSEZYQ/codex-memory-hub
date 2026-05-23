@@ -1,5 +1,12 @@
 # 更新记录
 
+## 1.2.0 - 2026-05-24
+
+- 采用 `.codex-memory/` 作为统一记忆目录，保持项目根目录干净。
+- 新增 workstream 协作层，用于同一任务下多个线程共享进展。
+- 初始化结构调整为 `AGENTS.md`、`.codex-memory/index.md`、`.codex-memory/project.md`、`.codex-memory/threads/`、`.codex-memory/workstreams/` 和 `.codex-memory/archive/`。
+- 保留对旧 `docs/wiki` 结构的读取兼容，但新记忆默认写入 `.codex-memory/`。
+
 ## 1.1.0 - 2026-05-19
 
 - 改为线程记忆模型：每个 Codex 线程默认维护自己的记忆文件。

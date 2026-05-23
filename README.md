@@ -2,7 +2,7 @@
 
 这是一个让 Codex 工作可以跨新线程续接的记忆插件。
 
-它现在采用“线程记忆”模型：每个 Codex 线程写自己的记忆文件，项目级文件只保留入口规则和稳定背景。这样同一个项目里开多个线程并行做 PPT、图片、代码或资料整理时，不会反复抢写同一个项目记忆文件。
+它采用干净的项目结构：项目根目录只保留 `AGENTS.md`，所有记忆数据都放进 `.codex-memory/`。每个 Codex 线程写自己的记忆文件；多个线程协作同一件事时，用 workstream 记录共享进展，避免大家抢写同一个状态文件。
 
 ## 安装
 
@@ -32,20 +32,22 @@ skill/codex-memory-hub/SKILL.md
 
 ```text
 AGENTS.md
-docs/wiki/index.md
-docs/wiki/project.md
-docs/wiki/thread-memory/
+.codex-memory/index.md
+.codex-memory/project.md
+.codex-memory/threads/
+.codex-memory/workstreams/
+.codex-memory/archive/
 ```
 
-新线程开始时，Codex 应该列出 `docs/wiki/thread-memory/` 里的全部线程记忆文件，让用户选择“新建一个线程记忆”或“复用某个已有线程记忆”。
+新线程开始时，Codex 会读取 `.codex-memory/`，列出已有线程记忆和相关 workstream，让用户选择新建或复用。
 
-并行任务建议新建不同的线程记忆文件；只有继续同一个工作流时才复用原文件。
+并行任务建议新建不同的线程记忆文件；如果多个线程处理同一个任务、功能或交付物，它们共享同一个 workstream，并通过独立事件文件记录进展。
 
 ## 记忆规则
 
-线程记忆记录过程，项目文件只保存稳定背景。
+线程记忆记录过程，workstream 记录协作进展，`project.md` 只保存稳定背景。
 
-默认不再维护 `current-status.md`、`next-actions.md`、`decisions.md`、`session-log.md` 这类公共状态页。用户明确要求“汇总项目记忆”或“整理所有线程”时，Codex 再从线程记忆里整理项目级总结。
+默认不再维护 `current-status.md`、`next-actions.md`、`decisions.md`、`session-log.md` 这类公共状态页。用户明确要求“汇总项目记忆”或“整理所有线程”时，Codex 再从 `.codex-memory/` 里整理项目级总结。
 
 ## 包含内容
 

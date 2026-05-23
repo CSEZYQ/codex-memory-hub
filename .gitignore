@@ -7,3 +7,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+
+# Local Codex Memory Hub state for this repository
+AGENTS.md
+.codex-memory/

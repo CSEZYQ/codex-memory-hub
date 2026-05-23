@@ -21,8 +21,10 @@ if ([string]::IsNullOrWhiteSpace($ProjectName)) {
     $ProjectName = "Project"
 }
 
-$WikiRoot = Join-Path (Join-Path $ProjectRoot "docs") "wiki"
-$ThreadMemoryRoot = Join-Path $WikiRoot "thread-memory"
+$MemoryRoot = Join-Path $ProjectRoot ".codex-memory"
+$ThreadsRoot = Join-Path $MemoryRoot "threads"
+$WorkstreamsRoot = Join-Path $MemoryRoot "workstreams"
+$ArchiveRoot = Join-Path $MemoryRoot "archive"
 $Today = Get-Date -Format "yyyy-MM-dd"
 
 function Write-FileIfNeeded {
@@ -43,21 +45,22 @@ function Write-FileIfNeeded {
     Write-Host "write: $FilePath"
 }
 
-New-Item -ItemType Directory -Force -Path $ThreadMemoryRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $ThreadsRoot, $WorkstreamsRoot, $ArchiveRoot | Out-Null
 
 $agents = @"
 # $ProjectName Agent Rules
 
-This project uses Codex thread memory. Do not rely only on the current chat context, and do not force every thread to maintain shared project status files.
+This project uses Codex Memory Hub. Keep the project root clean: `AGENTS.md` is the entrypoint and `.codex-memory/` contains all memory data.
 
 ## Startup
 
 For non-trivial work:
 
-1. Read docs/wiki/index.md.
-2. Read docs/wiki/project.md if it exists.
-3. List every file under docs/wiki/thread-memory/.
-4. Ask the user whether to create a new thread memory file or reuse an existing one.
+1. Read `.codex-memory/index.md`.
+2. Read `.codex-memory/project.md` if it exists.
+3. List every file under `.codex-memory/threads/`.
+4. List relevant workstreams under `.codex-memory/workstreams/`.
+5. Ask the user whether to create a new thread memory file or reuse an existing one, unless the user already specified the thread or workstream.
 
 If there is no thread memory file, create a new one. If the user explicitly names a thread memory file or a specific workstream, use that file directly.
 
@@ -65,7 +68,7 @@ For parallel Codex work, create separate thread memory files. Reuse an existing 
 
 ## Thread Memory
 
-Store thread memory under docs/wiki/thread-memory/ with a unique filename:
+Store thread memory under `.codex-memory/threads/` with a unique filename:
 
 YYYY-MM-DD-HHMM-<short-task>.md
 
@@ -76,6 +79,7 @@ Each thread memory file should include:
 - updated time
 - status: active, done, or archived
 - scope
+- optional workstream id
 - current context
 - timeline
 - outputs
@@ -83,22 +87,38 @@ Each thread memory file should include:
 - problems
 - next steps
 
+## Workstreams
+
+For related parallel threads, use `.codex-memory/workstreams/<workstream-id>/`.
+
+- `workstream.md` records scope, goal, related files, and active threads.
+- `snapshot.md` is a compact rebuildable summary.
+- `events/` contains short event files from individual threads.
+
+Prefer unique event files over rewriting one shared live status file.
+
 ## Writeback
 
-At the end of meaningful work, update only the selected thread memory file.
+At the end of meaningful work, update the selected thread memory file.
 
-Do not automatically update shared project summary files such as current-status.md, next-actions.md, decisions.md, or session-log.md. Project-level files are optional stable background, not live truth.
+If the work belongs to a workstream, also write a short event file under `.codex-memory/workstreams/<workstream-id>/events/`.
 
-Only update docs/wiki/project.md or create a project-level summary when the user explicitly asks to summarize, consolidate, or update project-level memory.
+Do not automatically update legacy shared project status files such as `current-status.md`, `next-actions.md`, `decisions.md`, or `session-log.md`. Project-level files are optional stable background, not live truth.
+
+Only update `.codex-memory/project.md` or create a project-level summary when the user explicitly asks to summarize, consolidate, or update project-level memory.
 
 If the selected thread memory file changed while this thread was preparing to write, re-read it and append carefully. If a safe append is not possible, create a new sibling file with a -fork-<shortid> suffix and mark which file it forked from.
 "@
 
 $index = @"
-# Wiki Index
+# Codex Memory Index
 
 - [project.md](./project.md)
-- [thread-memory/](./thread-memory/)
+- [threads/](./threads/)
+- [workstreams/](./workstreams/)
+- [archive/](./archive/)
+
+Root policy: keep project memory inside `.codex-memory/`; keep only `AGENTS.md` in the project root.
 "@
 
 $project = @"
@@ -124,17 +144,21 @@ This file is optional stable background. It is not a live status tracker.
 
 ## Notes
 
-- Thread work logs live in docs/wiki/thread-memory/.
+- Thread work logs live in `.codex-memory/threads/`.
+- Shared workstream coordination lives in `.codex-memory/workstreams/`.
 "@
 
 Write-FileIfNeeded (Join-Path $ProjectRoot "AGENTS.md") $agents
-Write-FileIfNeeded (Join-Path $WikiRoot "index.md") $index
-Write-FileIfNeeded (Join-Path $WikiRoot "project.md") $project
-Write-FileIfNeeded (Join-Path $ThreadMemoryRoot ".gitkeep") ""
+Write-FileIfNeeded (Join-Path $MemoryRoot "index.md") $index
+Write-FileIfNeeded (Join-Path $MemoryRoot "project.md") $project
+Write-FileIfNeeded (Join-Path $ThreadsRoot ".gitkeep") ""
+Write-FileIfNeeded (Join-Path $WorkstreamsRoot ".gitkeep") ""
+Write-FileIfNeeded (Join-Path $ArchiveRoot ".gitkeep") ""
 
 Write-Host ""
-Write-Host "Codex thread memory initialized:"
-Write-Host "- Project:       $ProjectRoot"
-Write-Host "- Entry:         $(Join-Path $ProjectRoot 'AGENTS.md')"
-Write-Host "- Wiki:          $WikiRoot"
-Write-Host "- Thread memory: $ThreadMemoryRoot"
+Write-Host "Codex memory initialized:"
+Write-Host "- Project:     $ProjectRoot"
+Write-Host "- Entry:       $(Join-Path $ProjectRoot 'AGENTS.md')"
+Write-Host "- Memory root: $MemoryRoot"
+Write-Host "- Threads:     $ThreadsRoot"
+Write-Host "- Workstreams: $WorkstreamsRoot"
