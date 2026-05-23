@@ -122,6 +122,96 @@ $legacyProjectContent
 "@
         Write-FileIfNeeded $projectMemory $migratedProject
     }
+    elseif (-not (Test-Path -LiteralPath $projectMemory)) {
+        $legacyOverview = Join-Path $LegacyWikiRoot "project-overview.md"
+        if (Test-Path -LiteralPath $legacyOverview) {
+            $legacyOverviewContent = Get-Content -Raw -LiteralPath $legacyOverview
+            $migratedProject = @"
+---
+title: Project Background
+source: legacy-migration
+created: $Today
+updated: $Today
+status: optional
+migrated_from: docs/wiki/project-overview.md
+---
+
+# $ProjectName Project Background
+
+This file was migrated from the first public `docs/wiki/project-overview.md` layout.
+
+## Migrated Legacy Project Overview
+
+$legacyOverviewContent
+"@
+            Write-FileIfNeeded $projectMemory $migratedProject
+        }
+    }
+
+    $legacyProjectPages = @(
+        "project-overview.md",
+        "current-status.md",
+        "next-actions.md",
+        "decisions.md",
+        "session-log.md",
+        "ideas.md",
+        "log.md"
+    )
+    $existingLegacyPages = @()
+    foreach ($legacyPage in $legacyProjectPages) {
+        $legacyPagePath = Join-Path $LegacyWikiRoot $legacyPage
+        if (Test-Path -LiteralPath $legacyPagePath) {
+            $existingLegacyPages += $legacyPagePath
+        }
+    }
+
+    if ($existingLegacyPages.Count -gt 0) {
+        $legacyThreadPath = Get-UniquePath (Join-Path $ThreadsRoot "$Stamp-legacy-project-memory.md")
+        $legacyThread = @"
+---
+thread: legacy-project-memory
+created: $Now
+updated: $Now
+status: active
+scope: Migrated first public Codex Memory Hub project memory from docs/wiki status pages.
+workstream: legacy-migration
+migrated_from: docs/wiki
+---
+
+# Legacy Project Memory
+
+This thread memory was created automatically from the first public Codex Memory Hub project-memory layout.
+
+## Current Context
+
+- Legacy project memory existed under `docs/wiki/`.
+- The source files were preserved under `.codex-memory/archive/`.
+- The content below was copied into active thread memory so future Codex threads can continue without manual cleanup.
+
+## Timeline
+
+- $Now - Migrated legacy project-memory pages into this thread memory.
+
+"@
+        foreach ($legacyPagePath in $existingLegacyPages) {
+            $legacyName = Split-Path -Leaf $legacyPagePath
+            $legacyContent = Get-Content -Raw -LiteralPath $legacyPagePath
+            $legacyThread += @"
+## Migrated $legacyName
+
+$legacyContent
+
+"@
+        }
+        $legacyThread += @"
+## Next
+
+- Continue from the migrated context above.
+- Use `.codex-memory/threads/` and `.codex-memory/workstreams/` for new memory.
+"@
+        Set-Content -LiteralPath $legacyThreadPath -Value $legacyThread -Encoding UTF8
+        Write-Host "migrate legacy project pages: $legacyThreadPath"
+    }
 
     $legacyThreadRoot = Join-Path $LegacyWikiRoot "thread-memory"
     if (Test-Path -LiteralPath $legacyThreadRoot) {

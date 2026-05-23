@@ -1,5 +1,10 @@
 # 更新记录
 
+## 1.3.1 - 2026-05-24
+
+- 增强最早公开版兼容：将 `project-overview.md`、`current-status.md`、`next-actions.md`、`decisions.md`、`session-log.md`、`ideas.md` 和 `log.md` 自动转成新版 active 线程记忆。
+- 升级后旧项目不只归档旧文件，也会把可继续工作的旧项目记忆放入 `.codex-memory/threads/`。
+
 ## 1.3.0 - 2026-05-24
 
 - 新增旧版 `docs/wiki/` 自动迁移：线程记忆复制到 `.codex-memory/threads/`，旧目录归档到 `.codex-memory/archive/`。

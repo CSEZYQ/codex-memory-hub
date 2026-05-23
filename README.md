@@ -6,6 +6,8 @@
 
 如果旧项目已经有 `docs/wiki/` 记忆，Codex 会自动迁移到 `.codex-memory/`，不需要用户手动整理旧目录。
 
+最早公开版生成的 `current-status.md`、`next-actions.md`、`decisions.md`、`session-log.md` 等项目记忆也会被转成新版线程记忆，避免升级后上下文断掉。
+
 ## 安装
 
 通过 Codex 的插件或 skill 安装流程导入这个文件夹或仓库即可。

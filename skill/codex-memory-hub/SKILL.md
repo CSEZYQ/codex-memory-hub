@@ -44,6 +44,7 @@ It skips existing files by default. Use `-Force` in PowerShell or `--force` in s
 If a project already has legacy `docs/wiki/` memory, the initializer migrates it automatically:
 
 - Copy legacy thread memories into `.codex-memory/threads/`.
+- Convert first public project-memory pages such as `project-overview.md`, `current-status.md`, `next-actions.md`, `decisions.md`, `session-log.md`, `ideas.md`, and `log.md` into an active `.codex-memory/threads/*-legacy-project-memory.md` file.
 - Preserve legacy files under `.codex-memory/archive/legacy-docs-wiki...`.
 - Create a `legacy-migration` workstream event.
 - Remove the empty legacy `docs/` folder when it is safe.

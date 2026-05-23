@@ -150,6 +150,85 @@ EOF
       cat "$legacy_project"
     } > "$project_memory"
     echo "write: $project_memory"
+  elif [ ! -e "$project_memory" ]; then
+    legacy_overview="$LEGACY_WIKI_ROOT/project-overview.md"
+    if [ -f "$legacy_overview" ]; then
+      {
+        cat <<EOF
+---
+title: Project Background
+source: legacy-migration
+created: $TODAY
+updated: $TODAY
+status: optional
+migrated_from: docs/wiki/project-overview.md
+---
+
+# $PROJECT_NAME Project Background
+
+This file was migrated from the first public docs/wiki/project-overview.md layout.
+
+## Migrated Legacy Project Overview
+
+EOF
+        cat "$legacy_overview"
+      } > "$project_memory"
+      echo "write: $project_memory"
+    fi
+  fi
+
+  legacy_project_pages="project-overview.md current-status.md next-actions.md decisions.md session-log.md ideas.md log.md"
+  existing_legacy_pages=""
+  for legacy_page in $legacy_project_pages; do
+    legacy_page_path="$LEGACY_WIKI_ROOT/$legacy_page"
+    if [ -f "$legacy_page_path" ]; then
+      existing_legacy_pages="$existing_legacy_pages $legacy_page"
+    fi
+  done
+
+  if [ -n "$existing_legacy_pages" ]; then
+    legacy_thread_path=$(unique_path "$THREADS_ROOT/$STAMP-legacy-project-memory.md")
+    cat > "$legacy_thread_path" <<EOF
+---
+thread: legacy-project-memory
+created: $NOW
+updated: $NOW
+status: active
+scope: Migrated first public Codex Memory Hub project memory from docs/wiki status pages.
+workstream: legacy-migration
+migrated_from: docs/wiki
+---
+
+# Legacy Project Memory
+
+This thread memory was created automatically from the first public Codex Memory Hub project-memory layout.
+
+## Current Context
+
+- Legacy project memory existed under docs/wiki/.
+- The source files were preserved under .codex-memory/archive/.
+- The content below was copied into active thread memory so future Codex threads can continue without manual cleanup.
+
+## Timeline
+
+- $NOW - Migrated legacy project-memory pages into this thread memory.
+
+EOF
+    for legacy_page in $existing_legacy_pages; do
+      legacy_page_path="$LEGACY_WIKI_ROOT/$legacy_page"
+      {
+        printf '## Migrated `%s`\n\n' "$legacy_page"
+        cat "$legacy_page_path"
+        printf '\n\n'
+      } >> "$legacy_thread_path"
+    done
+    cat >> "$legacy_thread_path" <<EOF
+## Next
+
+- Continue from the migrated context above.
+- Use .codex-memory/threads/ and .codex-memory/workstreams/ for new memory.
+EOF
+    echo "migrate legacy project pages: $legacy_thread_path"
   fi
 
   legacy_thread_root="$LEGACY_WIKI_ROOT/thread-memory"
