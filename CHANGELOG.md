@@ -1,5 +1,9 @@
 # 更新记录
 
+## 1.3.2 - 2026-05-24
+
+- 重写 README 使用说明，明确初始化、继续项目、旧版迁移、并行线程、Git 隐私和用户是否需要手动管理文件等场景。
+
 ## 1.3.1 - 2026-05-24
 
 - 增强最早公开版兼容：将 `project-overview.md`、`current-status.md`、`next-actions.md`、`decisions.md`、`session-log.md`、`ideas.md` 和 `log.md` 自动转成新版 active 线程记忆。
