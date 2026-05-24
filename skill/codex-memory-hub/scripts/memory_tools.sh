@@ -158,7 +158,7 @@ count_files() {
     printf '0\n'
     return
   fi
-  find "$root" -type f -name "$pattern" 2>/dev/null | wc -l | tr -d ' '
+  find "$root" -mindepth 1 -maxdepth 1 -type f -name "$pattern" 2>/dev/null | wc -l | tr -d ' '
 }
 
 file_size_bytes() {
@@ -225,7 +225,7 @@ latest_event_path() {
     printf '\n'
     return
   fi
-  latest=$(find "$events_dir" -type f -name "*.md" 2>/dev/null | sort | tail -n 1)
+  latest=$(find "$events_dir" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort | tail -n 1)
   if [ -n "$latest" ]; then
     relative_path "$latest"
   else
@@ -236,6 +236,7 @@ latest_event_path() {
 run_doctor() {
   ISSUES_FILE=$(mktemp)
   THREAD_WORKSTREAMS_FILE=$(mktemp)
+  ACTIVE_CONTINUATIONS_FILE=$(mktemp)
 
   thread_count=$(count_files "$THREADS_ROOT" "*.md")
   workstream_count=0
@@ -270,7 +271,7 @@ run_doctor() {
 
   if [ -d "$THREADS_ROOT" ]; then
     thread_list=$(mktemp)
-    find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
+    find "$THREADS_ROOT" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
     while IFS= read -r thread_file; do
       [ -n "$thread_file" ] || continue
       thread_path=$(relative_path "$thread_file")
@@ -304,6 +305,9 @@ run_doctor() {
       frontmatter_list "$thread_file" continues_from > "$refs_file" || true
       while IFS= read -r ref; do
         [ -n "$ref" ] || continue
+        if [ "$status" = "active" ]; then
+          printf '%s%s%s\n' "$ref" "$(printf '\t')" "$thread_path" >> "$ACTIVE_CONTINUATIONS_FILE"
+        fi
         if [ ! -e "$PROJECT_ROOT/$ref" ] && [ ! -e "$(dirname "$thread_file")/$ref" ]; then
           add_issue warning BROKEN_CONTINUES_FROM "$thread_path" "continues_from target does not exist: $ref"
         fi
@@ -311,6 +315,30 @@ run_doctor() {
       rm -f "$refs_file"
     done < "$thread_list"
     rm -f "$thread_list"
+  fi
+
+  if [ -s "$ACTIVE_CONTINUATIONS_FILE" ]; then
+    awk '
+      BEGIN { FS = sprintf("%c", 9); OFS = FS }
+      {
+        count[$1] += 1
+        if (paths[$1] == "") {
+          paths[$1] = $2
+        } else {
+          paths[$1] = paths[$1] ", " $2
+        }
+      }
+      END {
+        for (ref in count) {
+          if (count[ref] > 1) {
+            print ref, paths[ref]
+          }
+        }
+      }
+    ' "$ACTIVE_CONTINUATIONS_FILE" | while IFS="$(printf '\t')" read -r ref paths; do
+      [ -n "$ref" ] || continue
+      add_issue warning POSSIBLE_CONTINUATION_FORK "$ref" "Multiple active threads continue from the same predecessor: $paths"
+    done
   fi
 
   if [ -d "$WORKSTREAMS_ROOT" ]; then
@@ -336,7 +364,7 @@ run_doctor() {
       if [ "$event_count" -gt 0 ] && [ ! -f "$snapshot_file" ]; then
         add_issue warning WORKSTREAM_SNAPSHOT_MISSING "$workstream_path" "Workstream has events but no snapshot.md."
       fi
-      if [ -f "$snapshot_file" ] && [ -d "$events_dir" ] && find "$events_dir" -type f -name "*.md" -newer "$snapshot_file" 2>/dev/null | grep -q .; then
+      if [ -f "$snapshot_file" ] && [ -d "$events_dir" ] && find "$events_dir" -mindepth 1 -maxdepth 1 -type f -name "*.md" -newer "$snapshot_file" 2>/dev/null | grep -q .; then
         add_issue warning WORKSTREAM_SNAPSHOT_STALE "$workstream_path" "snapshot.md is older than the latest workstream event."
       fi
     done < "$workstream_list"
@@ -373,10 +401,10 @@ run_doctor() {
   fi
 
   if grep -q '^\[ERROR\]' "$ISSUES_FILE"; then
-    rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE"
+    rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE" "$ACTIVE_CONTINUATIONS_FILE"
     return 1
   fi
-  rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE"
+  rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE" "$ACTIVE_CONTINUATIONS_FILE"
   return 0
 }
 
@@ -392,7 +420,7 @@ write_thread_index() {
   first=1
   if [ -d "$THREADS_ROOT" ]; then
     thread_list=$(mktemp)
-    find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
+    find "$THREADS_ROOT" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
     while IFS= read -r thread_file; do
       [ -n "$thread_file" ] || continue
       thread_count=$((thread_count + 1))
@@ -466,7 +494,7 @@ write_workstream_index() {
   active_threads_file=$(mktemp)
   if [ -d "$THREADS_ROOT" ]; then
     thread_list_for_workstreams=$(mktemp)
-    find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$thread_list_for_workstreams"
+    find "$THREADS_ROOT" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort > "$thread_list_for_workstreams"
     while IFS= read -r thread_file; do
       [ -n "$thread_file" ] || continue
       thread_workstream=$(frontmatter_value "$thread_file" workstream)

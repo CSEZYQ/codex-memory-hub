@@ -1,5 +1,12 @@
 # 更新记录
 
+## 1.4.4 - 2026-05-24
+
+- 补齐 shell `doctor` 的 `POSSIBLE_CONTINUATION_FORK` 检查，和 PowerShell 版保持一致。
+- 对齐 shell 与 PowerShell 的扫描范围：`threads/` 和 workstream `events/` 只读取直接子文件，不再递归索引嵌套目录。
+- 调整测试脚本的 bash 检测，缺少 bash 时跳过 shell 专项测试，而不是在前置 parity 测试中直接失败。
+- 增加回归测试，覆盖 shell 分叉检测、嵌套 thread/event 目录的跨平台一致性。
+
 ## 1.4.3 - 2026-05-24
 
 - 修复 PowerShell `memory_tools.ps1` 解析多行 frontmatter 时误把缩进内容里的 `Note: value` 当成新字段的问题。

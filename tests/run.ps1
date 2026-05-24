@@ -7,6 +7,7 @@ $PsInit = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/init_project_memor
 $PsMemoryTools = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/memory_tools.ps1"
 $ReadmePath = Join-Path $RepoRoot "README.md"
 $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-memory-hub-tests-" + [guid]::NewGuid().ToString("N"))
+$bashCommand = Get-Command bash -ErrorAction SilentlyContinue
 
 function Assert-True {
     param(
@@ -68,6 +69,16 @@ function Invoke-MemoryToolsPowerShell {
         throw "Memory tools command '$Command' failed for $ProjectPath`n$output"
     }
     return ($output -join "`n")
+}
+
+function Convert-ToBashPath {
+    param([string]$InputPath)
+
+    $fullPath = [System.IO.Path]::GetFullPath($InputPath) -replace "\\", "/"
+    if ($fullPath -match "^([A-Za-z]):/(.*)$") {
+        return "/mnt/$($matches[1].ToLowerInvariant())/$($matches[2])"
+    }
+    return $fullPath
 }
 
 try {
@@ -165,11 +176,12 @@ thread: .codex-memory/threads/2026-05-24-110000-continue-ppt-images.md
     $doctorOutput = Invoke-MemoryToolsPowerShell $indexedProject "doctor"
     Assert-True ($doctorOutput -match "No errors found") "doctor should report no errors for indexed sample project"
 
-    $shellParityProject = Join-Path $RepoRoot ".codex-memory-hub-shell-parity"
-    if (Test-Path -LiteralPath $shellParityProject) {
-        Remove-Item -LiteralPath $shellParityProject -Recurse -Force
-    }
-    try {
+    if ($bashCommand) {
+        $shellParityProject = Join-Path $RepoRoot ".codex-memory-hub-shell-parity"
+        if (Test-Path -LiteralPath $shellParityProject) {
+            Remove-Item -LiteralPath $shellParityProject -Recurse -Force
+        }
+        try {
         New-Item -ItemType Directory -Path $shellParityProject | Out-Null
         Invoke-InitPowerShell $shellParityProject
         New-Item -ItemType Directory -Path (Join-Path $shellParityProject ".codex-memory/workstreams/audit-stream/events") -Force | Out-Null
@@ -245,10 +257,13 @@ status: active
         $shellLatestByName = (Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json).workstreams[0].latest_event
         Assert-True ($psLatestByName -eq ".codex-memory/workstreams/audit-stream/events/2026-05-24-140000-newer-name.md") "PowerShell latest_event should follow event filename order"
         Assert-True ($shellLatestByName -eq $psLatestByName) "shell latest_event should match PowerShell latest_event"
-    } finally {
-        if (Test-Path -LiteralPath $shellParityProject) {
-            Remove-Item -LiteralPath $shellParityProject -Recurse -Force
+        } finally {
+            if (Test-Path -LiteralPath $shellParityProject) {
+                Remove-Item -LiteralPath $shellParityProject -Recurse -Force
+            }
         }
+    } else {
+        Write-Host "skip shell parity tests: bash not found"
     }
 
     $brokenProject = Join-Path $TempRoot "broken"
@@ -290,6 +305,116 @@ status: active
     Assert-True ($brokenDoctorOutput -match "WORKSTREAM_ORPHANED") "doctor should warn about active workstreams with no thread references"
     Assert-True ($brokenDoctorOutput -match "POSSIBLE_SECRET") "doctor should warn about common hosted-service token patterns"
 
+    $forkProject = Join-Path $TempRoot "fork"
+    New-Item -ItemType Directory -Path $forkProject | Out-Null
+    Invoke-InitPowerShell $forkProject
+    Set-Content -LiteralPath (Join-Path $forkProject ".codex-memory/threads/2026-05-24-132000-base.md") -Encoding UTF8 -Value @"
+---
+thread: base
+created: 2026-05-24 13:20
+updated: 2026-05-24 13:20
+status: done
+scope: Base thread.
+---
+
+# Base
+"@
+    foreach ($fork in @(
+        @{ Stamp = "132100"; Name = "fork-a" },
+        @{ Stamp = "132101"; Name = "fork-b" }
+    )) {
+        Set-Content -LiteralPath (Join-Path $forkProject ".codex-memory/threads/2026-05-24-$($fork.Stamp)-$($fork.Name).md") -Encoding UTF8 -Value @"
+---
+thread: $($fork.Name)
+created: 2026-05-24 13:21
+updated: 2026-05-24 13:21
+status: active
+scope: Continuation fork.
+continues_from:
+  - .codex-memory/threads/2026-05-24-132000-base.md
+---
+
+# $($fork.Name)
+"@
+    }
+    $forkDoctorOutput = Invoke-MemoryToolsPowerShell $forkProject "doctor"
+    Assert-True ($forkDoctorOutput -match "POSSIBLE_CONTINUATION_FORK") "PowerShell doctor should warn when active threads share the same predecessor"
+    if ($bashCommand) {
+        Push-Location $RepoRoot
+        try {
+            $shellForkPath = Convert-ToBashPath $forkProject
+            $shellForkOutput = bash -c "sh skill/codex-memory-hub/scripts/memory_tools.sh --path '$shellForkPath' doctor"
+            if ($LASTEXITCODE -ne 0) {
+                throw "shell doctor failed for continuation fork project"
+            }
+        } finally {
+            Pop-Location
+        }
+        Assert-True (($shellForkOutput -join "`n") -match "POSSIBLE_CONTINUATION_FORK") "shell doctor should warn when active threads share the same predecessor"
+    }
+
+    $nestedProject = Join-Path $TempRoot "nested"
+    New-Item -ItemType Directory -Path $nestedProject | Out-Null
+    Invoke-InitPowerShell $nestedProject
+    New-Item -ItemType Directory -Path (Join-Path $nestedProject ".codex-memory/threads/nested") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $nestedProject ".codex-memory/workstreams/nested-stream/events/nested") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $nestedProject ".codex-memory/threads/2026-05-24-133000-root.md") -Encoding UTF8 -Value @"
+---
+thread: root
+created: 2026-05-24 13:30
+updated: 2026-05-24 13:30
+status: active
+scope: Root thread.
+workstream: nested-stream
+---
+
+# Root
+"@
+    Set-Content -LiteralPath (Join-Path $nestedProject ".codex-memory/threads/nested/2026-05-24-133100-nested.md") -Encoding UTF8 -Value @"
+---
+thread: nested
+created: 2026-05-24 13:31
+updated: 2026-05-24 13:31
+status: active
+scope: Nested thread should not be indexed.
+---
+
+# Nested
+"@
+    Set-Content -LiteralPath (Join-Path $nestedProject ".codex-memory/workstreams/nested-stream/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: nested-stream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Nested Stream
+"@
+    Set-Content -LiteralPath (Join-Path $nestedProject ".codex-memory/workstreams/nested-stream/events/2026-05-24-133200-root-event.md") -Encoding UTF8 -Value "root event"
+    Set-Content -LiteralPath (Join-Path $nestedProject ".codex-memory/workstreams/nested-stream/events/nested/2026-05-24-133300-nested-event.md") -Encoding UTF8 -Value "nested event"
+    Invoke-MemoryToolsPowerShell $nestedProject "index" | Out-Null
+    $psNestedThreads = Get-Content -Raw -LiteralPath (Join-Path $nestedProject ".codex-memory/system/thread-index.json") | ConvertFrom-Json
+    $psNestedWorkstreams = Get-Content -Raw -LiteralPath (Join-Path $nestedProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json
+    Assert-True ($psNestedThreads.thread_count -eq 1) "PowerShell index should only count direct thread files"
+    Assert-True ($psNestedWorkstreams.workstreams[0].event_count -eq 1) "PowerShell index should only count direct event files"
+    if ($bashCommand) {
+        Push-Location $RepoRoot
+        try {
+            $shellNestedPath = Convert-ToBashPath $nestedProject
+            bash -c "sh skill/codex-memory-hub/scripts/memory_tools.sh --path '$shellNestedPath' index >/dev/null"
+            if ($LASTEXITCODE -ne 0) {
+                throw "shell index failed for nested layout project"
+            }
+        } finally {
+            Pop-Location
+        }
+        $shellNestedThreads = Get-Content -Raw -LiteralPath (Join-Path $nestedProject ".codex-memory/system/thread-index.json") | ConvertFrom-Json
+        $shellNestedWorkstreams = Get-Content -Raw -LiteralPath (Join-Path $nestedProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json
+        Assert-True ($shellNestedThreads.thread_count -eq $psNestedThreads.thread_count) "shell index should match PowerShell direct thread scan behavior"
+        Assert-True ($shellNestedWorkstreams.workstreams[0].event_count -eq $psNestedWorkstreams.workstreams[0].event_count) "shell index should match PowerShell direct event scan behavior"
+    }
+
     $legacyOverviewProject = Join-Path $TempRoot "legacy-overview"
     New-Item -ItemType Directory -Path (Join-Path $legacyOverviewProject "docs/wiki") -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $legacyOverviewProject "docs/wiki/project-overview.md") -Value "Overview only content" -Encoding UTF8
@@ -315,7 +440,6 @@ status: active
     Assert-True ($forcedProjectContent -match "Forced legacy project memory") "--force did not overwrite project.md with migrated legacy project memory"
     Assert-True ($forcedProjectContent -notmatch "Existing project memory") "--force preserved old project.md content unexpectedly"
 
-    $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
     if ($bashCommand) {
         Push-Location $RepoRoot
         $shellRuntimePath = Join-Path $RepoRoot ".codex-memory-hub-test-runtime.sh"
