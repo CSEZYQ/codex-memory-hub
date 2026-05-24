@@ -73,6 +73,37 @@ function Normalize-MemoryReference {
     return $text.Trim()
 }
 
+function ConvertTo-MemoryTimestamp {
+    param([object]$Value)
+
+    $text = Normalize-MemoryReference $Value
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return ""
+    }
+
+    $match = [regex]::Match($text, "^(\d{4}-\d{2}-\d{2})(?:[ T-](\d{2}):?(\d{2})(?::?(\d{2}))?)?")
+    if (-not $match.Success) {
+        return ""
+    }
+
+    $date = $match.Groups[1].Value
+    $hour = if ($match.Groups[2].Success) { $match.Groups[2].Value } else { "00" }
+    $minute = if ($match.Groups[3].Success) { $match.Groups[3].Value } else { "00" }
+    $second = if ($match.Groups[4].Success) { $match.Groups[4].Value } else { "00" }
+    return "$date-$hour$minute$second"
+}
+
+function Get-EventTimestampFromPath {
+    param([string]$Path)
+
+    $name = Split-Path -Leaf $Path
+    $match = [regex]::Match($name, "^(\d{4}-\d{2}-\d{2}-\d{6})-")
+    if ($match.Success) {
+        return $match.Groups[1].Value
+    }
+    return ""
+}
+
 function Get-MetadataValue {
     param(
         [System.Collections.Specialized.OrderedDictionary]$Metadata,
@@ -388,8 +419,31 @@ function Test-MemoryHealth {
 
     foreach ($workstream in $WorkstreamRecords) {
         $workstreamDirectory = Join-Path $ProjectRoot ($workstream.path -replace "/", [System.IO.Path]::DirectorySeparatorChar)
+        $workstreamFile = Join-Path $workstreamDirectory "workstream.md"
         $snapshotPath = Join-Path $workstreamDirectory "snapshot.md"
         $eventsRoot = Join-Path $workstreamDirectory "events"
+        $workstreamMetadata = [ordered]@{}
+        if (-not (Test-Path -LiteralPath $workstreamFile)) {
+            Add-DoctorIssue $issues "warning" "WORKSTREAM_FILE_MISSING" $workstream.path "Workstream directory is missing workstream.md."
+        } else {
+            $workstreamMetadata = Read-FrontMatter $workstreamFile
+            foreach ($requiredMetadata in @("workstream", "created", "updated", "status")) {
+                if ([string]::IsNullOrWhiteSpace([string](Get-MetadataValue $workstreamMetadata $requiredMetadata))) {
+                    Add-DoctorIssue $issues "warning" "WORKSTREAM_METADATA_MISSING" $workstream.path "Workstream metadata '$requiredMetadata' is missing."
+                }
+            }
+
+            $declaredWorkstream = [string](Get-MetadataValue $workstreamMetadata "workstream")
+            if (-not [string]::IsNullOrWhiteSpace($declaredWorkstream) -and $declaredWorkstream -ne $workstream.id) {
+                Add-DoctorIssue $issues "warning" "WORKSTREAM_ID_MISMATCH" $workstream.path "workstream.md declares '$declaredWorkstream' but directory id is '$($workstream.id)'."
+            }
+
+            $workstreamStatus = [string](Get-MetadataValue $workstreamMetadata "status")
+            if (-not [string]::IsNullOrWhiteSpace($workstreamStatus) -and $workstreamStatus -notin @("active", "done", "archived")) {
+                Add-DoctorIssue $issues "warning" "WORKSTREAM_STATUS_UNKNOWN" $workstream.path "Workstream status should be active, done, or archived."
+            }
+        }
+
         $referencedThreads = @($ThreadRecords | Where-Object { $_.workstream -eq $workstream.id })
         if ($referencedThreads.Count -eq 0 -and $workstream.status -ne "archived") {
             Add-DoctorIssue $issues "warning" "WORKSTREAM_ORPHANED" $workstream.path "Active workstream has no thread references."
@@ -398,8 +452,10 @@ function Test-MemoryHealth {
             Add-DoctorIssue $issues "warning" "WORKSTREAM_SNAPSHOT_MISSING" $workstream.path "Workstream has events but no snapshot.md."
         }
         if ((Test-Path -LiteralPath $snapshotPath) -and (Test-Path -LiteralPath $eventsRoot)) {
-            $latestEvent = Get-ChildItem -LiteralPath $eventsRoot -File -Filter "*.md" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($latestEvent -and $latestEvent.LastWriteTime -gt (Get-Item -LiteralPath $snapshotPath).LastWriteTime) {
+            $snapshotMetadata = Read-FrontMatter $snapshotPath
+            $snapshotTimestamp = ConvertTo-MemoryTimestamp (Get-MetadataValue $snapshotMetadata "updated")
+            $latestEventTimestamp = Get-EventTimestampFromPath $workstream.latest_event
+            if (-not [string]::IsNullOrWhiteSpace($latestEventTimestamp) -and -not [string]::IsNullOrWhiteSpace($snapshotTimestamp) -and $latestEventTimestamp -gt $snapshotTimestamp) {
                 Add-DoctorIssue $issues "warning" "WORKSTREAM_SNAPSHOT_STALE" $workstream.path "snapshot.md is older than the latest workstream event."
             }
         }
@@ -486,7 +542,6 @@ function Invoke-Index {
     $threadIndex = [pscustomobject]@{
         schema          = "codex-memory-hub.thread-index.v1"
         generated_at    = $generatedAt
-        project_root    = $ProjectRoot
         memory_root     = ".codex-memory"
         thread_count    = $threadRecords.Count
         active_count    = @($threadRecords | Where-Object { $_.status -eq "active" }).Count
@@ -497,7 +552,6 @@ function Invoke-Index {
     $workstreamIndex = [pscustomobject]@{
         schema           = "codex-memory-hub.workstream-index.v1"
         generated_at     = $generatedAt
-        project_root     = $ProjectRoot
         memory_root      = ".codex-memory"
         workstream_count = $workstreamRecords.Count
         workstreams      = @($workstreamRecords)

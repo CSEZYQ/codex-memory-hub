@@ -1,6 +1,6 @@
 {
   "name": "codex-memory-hub",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "Codex memory plugin for clean, restartable, parallel project work with automatic memory intent detection and cross-platform deterministic maintenance.",
   "license": "MIT",
   "keywords": [

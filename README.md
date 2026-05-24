@@ -22,6 +22,8 @@ AGENTS.md
 
 ## 怎么用
 
+先把这个仓库导入为 Codex plugin，或者把里面的 `codex-memory-hub` skill 安装到 Codex。
+
 在项目目录里对 Codex 说：
 
 ```text
@@ -155,6 +157,7 @@ sh <skill目录>/scripts/memory_tools.sh --path <项目路径> index
 旧版 docs/wiki 是否还没迁移
 continues_from 是否断链
 thread 指向的 workstream 是否存在
+workstream.md 是否缺失或和目录不一致
 active workstream 是否没有任何 thread 引用
 多个 active 线程是否从同一个旧线程分叉
 workstream snapshot 是否过期

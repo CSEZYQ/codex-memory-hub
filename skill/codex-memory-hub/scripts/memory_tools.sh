@@ -151,14 +151,39 @@ frontmatter_list() {
   ' "$file"
 }
 
-count_files() {
+list_direct_files() {
   root=$1
   pattern=$2
   if [ ! -d "$root" ]; then
-    printf '0\n'
-    return
+    return 0
   fi
-  find "$root" -mindepth 1 -maxdepth 1 -type f -name "$pattern" 2>/dev/null | wc -l | tr -d ' '
+
+  for item in "$root"/$pattern; do
+    [ -f "$item" ] || continue
+    printf '%s\n' "$item"
+  done | sort
+}
+
+list_direct_dirs() {
+  root=$1
+  if [ ! -d "$root" ]; then
+    return 0
+  fi
+
+  for item in "$root"/*; do
+    [ -d "$item" ] || continue
+    name=$(basename "$item")
+    case "$name" in
+      .*) continue ;;
+    esac
+    printf '%s\n' "$item"
+  done | sort
+}
+
+count_files() {
+  root=$1
+  pattern=$2
+  list_direct_files "$root" "$pattern" | wc -l | tr -d ' '
 }
 
 file_size_bytes() {
@@ -221,16 +246,55 @@ active_threads_json_for_workstream() {
 
 latest_event_path() {
   events_dir=$1
-  if [ ! -d "$events_dir" ]; then
-    printf '\n'
-    return
-  fi
-  latest=$(find "$events_dir" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort | tail -n 1)
+  latest=$(list_direct_files "$events_dir" "*.md" | tail -n 1)
   if [ -n "$latest" ]; then
     relative_path "$latest"
   else
     printf '\n'
   fi
+}
+
+normalize_memory_timestamp() {
+  value=$(printf '%s' "$1" | tr 'T' ' ')
+  if [ -z "$value" ]; then
+    printf '\n'
+    return
+  fi
+
+  date_part=${value%% *}
+  if [ "$date_part" = "$value" ]; then
+    time_part="000000"
+  else
+    time_part=${value#* }
+    time_part=${time_part%% *}
+    time_part=$(printf '%s' "$time_part" | tr -d ':')
+    if [ -z "$time_part" ]; then
+      time_part="000000"
+    elif [ "${#time_part}" -eq 4 ]; then
+      time_part="${time_part}00"
+    fi
+  fi
+
+  case "$date_part-$time_part" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9])
+      printf '%s\n' "$date_part-$time_part"
+      ;;
+    *)
+      printf '\n'
+      ;;
+  esac
+}
+
+event_timestamp_from_path() {
+  name=$(basename "$1")
+  case "$name" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
+      printf '%s\n' "$(printf '%s' "$name" | cut -c 1-17)"
+      ;;
+    *)
+      printf '\n'
+      ;;
+  esac
 }
 
 run_doctor() {
@@ -241,7 +305,7 @@ run_doctor() {
   thread_count=$(count_files "$THREADS_ROOT" "*.md")
   workstream_count=0
   if [ -d "$WORKSTREAMS_ROOT" ]; then
-    workstream_count=$(find "$WORKSTREAMS_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')
+    workstream_count=$(list_direct_dirs "$WORKSTREAMS_ROOT" | wc -l | tr -d ' ')
   fi
 
   if [ ! -d "$MEMORY_ROOT" ]; then
@@ -271,7 +335,7 @@ run_doctor() {
 
   if [ -d "$THREADS_ROOT" ]; then
     thread_list=$(mktemp)
-    find "$THREADS_ROOT" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
+    list_direct_files "$THREADS_ROOT" "*.md" > "$thread_list"
     while IFS= read -r thread_file; do
       [ -n "$thread_file" ] || continue
       thread_path=$(relative_path "$thread_file")
@@ -343,7 +407,7 @@ run_doctor() {
 
   if [ -d "$WORKSTREAMS_ROOT" ]; then
     workstream_list=$(mktemp)
-    find "$WORKSTREAMS_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | sort > "$workstream_list"
+    list_direct_dirs "$WORKSTREAMS_ROOT" > "$workstream_list"
     while IFS= read -r workstream_dir; do
       [ -n "$workstream_dir" ] || continue
       workstream_path=$(relative_path "$workstream_dir")
@@ -352,8 +416,23 @@ run_doctor() {
       snapshot_file="$workstream_dir/snapshot.md"
       events_dir="$workstream_dir/events"
       status=""
-      if [ -f "$workstream_file" ]; then
+      if [ ! -f "$workstream_file" ]; then
+        add_issue warning WORKSTREAM_FILE_MISSING "$workstream_path" "Workstream directory is missing workstream.md."
+      else
+        for key in workstream created updated status; do
+          value=$(frontmatter_value "$workstream_file" "$key")
+          if [ -z "$value" ]; then
+            add_issue warning WORKSTREAM_METADATA_MISSING "$workstream_path" "Workstream metadata '$key' is missing."
+          fi
+        done
+        declared_workstream=$(frontmatter_value "$workstream_file" workstream)
+        if [ -n "$declared_workstream" ] && [ "$declared_workstream" != "$workstream_id" ]; then
+          add_issue warning WORKSTREAM_ID_MISMATCH "$workstream_path" "workstream.md declares '$declared_workstream' but directory id is '$workstream_id'."
+        fi
         status=$(frontmatter_value "$workstream_file" status)
+        if [ -n "$status" ] && [ "$status" != "active" ] && [ "$status" != "done" ] && [ "$status" != "archived" ]; then
+          add_issue warning WORKSTREAM_STATUS_UNKNOWN "$workstream_path" "Workstream status should be active, done, or archived."
+        fi
       fi
 
       if [ "$status" != "archived" ] && ! workstream_referenced_by_thread "$workstream_id"; then
@@ -364,8 +443,13 @@ run_doctor() {
       if [ "$event_count" -gt 0 ] && [ ! -f "$snapshot_file" ]; then
         add_issue warning WORKSTREAM_SNAPSHOT_MISSING "$workstream_path" "Workstream has events but no snapshot.md."
       fi
-      if [ -f "$snapshot_file" ] && [ -d "$events_dir" ] && find "$events_dir" -mindepth 1 -maxdepth 1 -type f -name "*.md" -newer "$snapshot_file" 2>/dev/null | grep -q .; then
-        add_issue warning WORKSTREAM_SNAPSHOT_STALE "$workstream_path" "snapshot.md is older than the latest workstream event."
+      if [ -f "$snapshot_file" ] && [ -d "$events_dir" ]; then
+        latest_event=$(latest_event_path "$events_dir")
+        latest_event_timestamp=$(event_timestamp_from_path "$latest_event")
+        snapshot_timestamp=$(normalize_memory_timestamp "$(frontmatter_value "$snapshot_file" updated)")
+        if [ -n "$latest_event_timestamp" ] && [ -n "$snapshot_timestamp" ] && [ "$latest_event_timestamp" \> "$snapshot_timestamp" ]; then
+          add_issue warning WORKSTREAM_SNAPSHOT_STALE "$workstream_path" "snapshot.md is older than the latest workstream event."
+        fi
       fi
     done < "$workstream_list"
     rm -f "$workstream_list"
@@ -420,7 +504,7 @@ write_thread_index() {
   first=1
   if [ -d "$THREADS_ROOT" ]; then
     thread_list=$(mktemp)
-    find "$THREADS_ROOT" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
+    list_direct_files "$THREADS_ROOT" "*.md" > "$thread_list"
     while IFS= read -r thread_file; do
       [ -n "$thread_file" ] || continue
       thread_count=$((thread_count + 1))
@@ -469,7 +553,6 @@ write_thread_index() {
     printf '{\n'
     printf '  "schema": "codex-memory-hub.thread-index.v1",\n'
     printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
-    printf '  "project_root": "%s",\n' "$(json_escape "$PROJECT_ROOT")"
     printf '  "memory_root": ".codex-memory",\n'
     printf '  "thread_count": %s,\n' "$thread_count"
     printf '  "active_count": %s,\n' "$active_count"
@@ -489,12 +572,12 @@ write_workstream_index() {
   generated_at=$(date "+%Y-%m-%d %H:%M:%S")
   workstream_count=0
   if [ -d "$WORKSTREAMS_ROOT" ]; then
-    workstream_count=$(find "$WORKSTREAMS_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')
+    workstream_count=$(list_direct_dirs "$WORKSTREAMS_ROOT" | wc -l | tr -d ' ')
   fi
   active_threads_file=$(mktemp)
   if [ -d "$THREADS_ROOT" ]; then
     thread_list_for_workstreams=$(mktemp)
-    find "$THREADS_ROOT" -mindepth 1 -maxdepth 1 -type f -name "*.md" 2>/dev/null | sort > "$thread_list_for_workstreams"
+    list_direct_files "$THREADS_ROOT" "*.md" > "$thread_list_for_workstreams"
     while IFS= read -r thread_file; do
       [ -n "$thread_file" ] || continue
       thread_workstream=$(frontmatter_value "$thread_file" workstream)
@@ -509,14 +592,13 @@ write_workstream_index() {
     printf '{\n'
     printf '  "schema": "codex-memory-hub.workstream-index.v1",\n'
     printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
-    printf '  "project_root": "%s",\n' "$(json_escape "$PROJECT_ROOT")"
     printf '  "memory_root": ".codex-memory",\n'
     printf '  "workstream_count": %s,\n' "$workstream_count"
     printf '  "workstreams": [\n'
     first=1
     if [ -d "$WORKSTREAMS_ROOT" ]; then
       workstream_list=$(mktemp)
-      find "$WORKSTREAMS_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | sort > "$workstream_list"
+      list_direct_dirs "$WORKSTREAMS_ROOT" > "$workstream_list"
       while IFS= read -r workstream_dir; do
         [ -n "$workstream_dir" ] || continue
         if [ "$first" -eq 0 ]; then
@@ -568,7 +650,7 @@ run_index() {
   echo "Project: $PROJECT_ROOT"
   echo "Threads: $(count_files "$THREADS_ROOT" "*.md")"
   if [ -d "$WORKSTREAMS_ROOT" ]; then
-    echo "Workstreams: $(find "$WORKSTREAMS_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')"
+    echo "Workstreams: $(list_direct_dirs "$WORKSTREAMS_ROOT" | wc -l | tr -d ' ')"
   else
     echo "Workstreams: 0"
   fi

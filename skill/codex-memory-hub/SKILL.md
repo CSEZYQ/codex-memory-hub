@@ -107,6 +107,7 @@ Use `doctor` when memory looks inconsistent, after legacy migration, before shar
 - Legacy `docs/wiki/` that still needs migration.
 - Broken `continues_from` links.
 - Thread workstream references that point to missing workstreams.
+- Missing or inconsistent `workstream.md` metadata.
 - Active workstreams that have no thread references.
 - Multiple active threads continuing from the same predecessor.
 - Workstream snapshots that are missing or stale.

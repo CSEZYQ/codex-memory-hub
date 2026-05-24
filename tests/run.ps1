@@ -6,6 +6,7 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 $PsInit = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/init_project_memory.ps1"
 $PsMemoryTools = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/memory_tools.ps1"
 $ReadmePath = Join-Path $RepoRoot "README.md"
+$ShellMemoryTools = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/memory_tools.sh"
 $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-memory-hub-tests-" + [guid]::NewGuid().ToString("N"))
 $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
 
@@ -85,11 +86,14 @@ try {
     New-Item -ItemType Directory -Path $TempRoot | Out-Null
 
     $readme = Get-Content -Raw -LiteralPath $ReadmePath
+    $shellMaintenanceScript = Get-Content -Raw -LiteralPath $ShellMemoryTools
     Assert-True ($readme -match "-Command doctor") "README should show the real PowerShell doctor command"
     Assert-True ($readme -match "-Command index") "README should show the real PowerShell index command"
     Assert-True ($readme -notmatch "(?m)^memory_tools\.ps1 doctor$") "README should not imply that doctor is the first positional PowerShell argument"
     Assert-True ($readme -match "2026-05-24-090000-ppt-images\.md") "README continuation example should use second-precision thread filenames"
     Assert-True ($readme -notmatch "2026-05-24-0900-ppt-images\.md") "README should not keep minute-precision thread filename examples"
+    Assert-True ($readme -match "导入|安装") "README should tell GitHub users to import or install the plugin first"
+    Assert-True ($shellMaintenanceScript -notmatch "-mindepth|-maxdepth") "shell maintenance script should not use GNU-only find options"
 
     $cleanProject = Join-Path $TempRoot "clean"
     New-Item -ItemType Directory -Path $cleanProject | Out-Null
@@ -166,6 +170,12 @@ thread: .codex-memory/threads/2026-05-24-110000-continue-ppt-images.md
 # Progress
 "@
     Invoke-MemoryToolsPowerShell $indexedProject "index" | Out-Null
+    $indexedThreadRaw = Get-Content -Raw -LiteralPath (Join-Path $indexedProject ".codex-memory/system/thread-index.json")
+    $indexedWorkstreamRaw = Get-Content -Raw -LiteralPath (Join-Path $indexedProject ".codex-memory/system/workstream-index.json")
+    Assert-True ($indexedThreadRaw -notmatch '"project_root"') "thread index should not store absolute project_root paths"
+    Assert-True ($indexedThreadRaw -notmatch [regex]::Escape($indexedProject)) "thread index should not leak the absolute project path"
+    Assert-True ($indexedWorkstreamRaw -notmatch '"project_root"') "workstream index should not store absolute project_root paths"
+    Assert-True ($indexedWorkstreamRaw -notmatch [regex]::Escape($indexedProject)) "workstream index should not leak the absolute project path"
     $indexedThreads = Get-Content -Raw -LiteralPath (Join-Path $indexedProject ".codex-memory/system/thread-index.json") | ConvertFrom-Json
     Assert-True ($indexedThreads.threads.Count -eq 2) "thread index should include both thread memories"
     Assert-True (($indexedThreads.threads | Where-Object { $_.name -eq "2026-05-24-110000-continue-ppt-images.md" }).continues_from.Count -eq 1) "thread index should preserve continues_from metadata"
@@ -288,6 +298,45 @@ leaked token: ghp_1234567890abcdefghijklmnopqrstu
 This body text mentions workstream: orphan-workstream but frontmatter does not reference it.
 "@
     New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/orphan-workstream") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/missing-file") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/mismatch/events") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/stale-stream/events") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/threads/2026-05-24-121000-missing-workstream-file.md") -Encoding UTF8 -Value @"
+---
+thread: missing-workstream-file
+created: 2026-05-24 12:10
+updated: 2026-05-24 12:10
+status: active
+scope: References a workstream directory without workstream.md.
+workstream: missing-file
+---
+
+# Missing Workstream File
+"@
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/threads/2026-05-24-122000-mismatched-workstream.md") -Encoding UTF8 -Value @"
+---
+thread: mismatched-workstream
+created: 2026-05-24 12:20
+updated: 2026-05-24 12:20
+status: active
+scope: References a workstream with mismatched metadata.
+workstream: mismatch
+---
+
+# Mismatched Workstream
+"@
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/threads/2026-05-24-123000-stale-snapshot.md") -Encoding UTF8 -Value @"
+---
+thread: stale-snapshot
+created: 2026-05-24 12:30
+updated: 2026-05-24 12:30
+status: active
+scope: References a stale workstream snapshot.
+workstream: stale-stream
+---
+
+# Stale Snapshot
+"@
     Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/orphan-workstream/workstream.md") -Encoding UTF8 -Value @"
 ---
 workstream: orphan-workstream
@@ -298,11 +347,48 @@ status: active
 
 # Orphan Workstream
 "@
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/mismatch/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: other-workstream-id
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Mismatch
+"@
+    $staleSnapshotPath = Join-Path $brokenProject ".codex-memory/workstreams/stale-stream/snapshot.md"
+    $staleEventPath = Join-Path $brokenProject ".codex-memory/workstreams/stale-stream/events/2026-05-24-130000-later-event.md"
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/stale-stream/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: stale-stream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Stale Stream
+"@
+    Set-Content -LiteralPath $staleSnapshotPath -Encoding UTF8 -Value @"
+---
+workstream: stale-stream
+updated: 2026-05-24 12:00
+status: active
+---
+
+# Snapshot
+"@
+    Set-Content -LiteralPath $staleEventPath -Encoding UTF8 -Value "later event"
+    (Get-Item -LiteralPath $staleSnapshotPath).LastWriteTime = Get-Date "2026-05-24 14:00"
+    (Get-Item -LiteralPath $staleEventPath).LastWriteTime = Get-Date "2026-05-24 11:00"
     $brokenDoctorOutput = Invoke-MemoryToolsPowerShell $brokenProject "doctor"
-    Assert-True ($brokenDoctorOutput -match "Threads: 1") "doctor should count a single thread correctly"
+    Assert-True ($brokenDoctorOutput -match "Threads: 4") "doctor should count direct thread files correctly"
     Assert-True ($brokenDoctorOutput -match "BROKEN_CONTINUES_FROM") "doctor should warn about missing continues_from target"
     Assert-True ($brokenDoctorOutput -match "BROKEN_WORKSTREAM_REFERENCE") "doctor should warn about missing thread workstream targets"
     Assert-True ($brokenDoctorOutput -match "WORKSTREAM_ORPHANED") "doctor should warn about active workstreams with no thread references"
+    Assert-True ($brokenDoctorOutput -match "WORKSTREAM_FILE_MISSING") "doctor should warn about workstream directories missing workstream.md"
+    Assert-True ($brokenDoctorOutput -match "WORKSTREAM_ID_MISMATCH") "doctor should warn when workstream frontmatter id differs from the directory id"
+    Assert-True ($brokenDoctorOutput -match "WORKSTREAM_SNAPSHOT_STALE") "doctor should compare snapshot freshness by event timestamp, not filesystem mtime"
     Assert-True ($brokenDoctorOutput -match "POSSIBLE_SECRET") "doctor should warn about common hosted-service token patterns"
 
     $forkProject = Join-Path $TempRoot "fork"
@@ -528,6 +614,85 @@ grep -q "BROKEN_CONTINUES_FROM" "$tmp/broken-doctor.txt"
 grep -q "BROKEN_WORKSTREAM_REFERENCE" "$tmp/broken-doctor.txt"
 grep -q "WORKSTREAM_ORPHANED" "$tmp/broken-doctor.txt"
 grep -q "POSSIBLE_SECRET" "$tmp/broken-doctor.txt"
+
+mkdir -p "$tmp/workstream-integrity/.codex-memory/threads" \
+  "$tmp/workstream-integrity/.codex-memory/workstreams/missing-file" \
+  "$tmp/workstream-integrity/.codex-memory/workstreams/mismatch/events" \
+  "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/events" \
+  "$tmp/workstream-integrity/.codex-memory/archive" \
+  "$tmp/workstream-integrity/.codex-memory/system"
+printf '%s\n' "# Index" > "$tmp/workstream-integrity/.codex-memory/index.md"
+printf '%s\n' "# Project" > "$tmp/workstream-integrity/.codex-memory/project.md"
+cat > "$tmp/workstream-integrity/.codex-memory/threads/2026-05-24-130000-missing-file.md" <<'EOF2'
+---
+thread: missing-file
+created: 2026-05-24 13:00
+updated: 2026-05-24 13:00
+status: active
+scope: missing workstream file
+workstream: missing-file
+---
+EOF2
+cat > "$tmp/workstream-integrity/.codex-memory/threads/2026-05-24-131000-mismatch.md" <<'EOF2'
+---
+thread: mismatch
+created: 2026-05-24 13:10
+updated: 2026-05-24 13:10
+status: active
+scope: mismatched workstream id
+workstream: mismatch
+---
+EOF2
+cat > "$tmp/workstream-integrity/.codex-memory/workstreams/mismatch/workstream.md" <<'EOF2'
+---
+workstream: other-workstream-id
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+EOF2
+cat > "$tmp/workstream-integrity/.codex-memory/threads/2026-05-24-132000-stale.md" <<'EOF2'
+---
+thread: stale
+created: 2026-05-24 13:20
+updated: 2026-05-24 13:20
+status: active
+scope: stale snapshot
+workstream: stale-stream
+---
+EOF2
+cat > "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/workstream.md" <<'EOF2'
+---
+workstream: stale-stream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+EOF2
+cat > "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/snapshot.md" <<'EOF2'
+---
+workstream: stale-stream
+updated: 2026-05-24 12:00
+status: active
+---
+EOF2
+printf '%s\n' "later event" > "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/events/2026-05-24-130000-later-event.md"
+touch -t 202605241400 "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/snapshot.md"
+touch -t 202605241100 "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/events/2026-05-24-130000-later-event.md"
+sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/workstream-integrity" doctor > "$tmp/workstream-integrity-doctor.txt"
+grep -q "WORKSTREAM_FILE_MISSING" "$tmp/workstream-integrity-doctor.txt"
+grep -q "WORKSTREAM_ID_MISMATCH" "$tmp/workstream-integrity-doctor.txt"
+grep -q "WORKSTREAM_SNAPSHOT_STALE" "$tmp/workstream-integrity-doctor.txt"
+
+sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/workstream-integrity" index >/dev/null
+if grep -q '"project_root"' "$tmp/workstream-integrity/.codex-memory/system/thread-index.json"; then
+  echo "shell thread index leaked project_root" >&2
+  exit 1
+fi
+if grep -q '"project_root"' "$tmp/workstream-integrity/.codex-memory/system/workstream-index.json"; then
+  echo "shell workstream index leaked project_root" >&2
+  exit 1
+fi
 '@ -replace "`r", ""
             [System.IO.File]::WriteAllText($shellRuntimePath, $shellRuntimeTests, [System.Text.UTF8Encoding]::new($false))
             bash ".codex-memory-hub-test-runtime.sh"

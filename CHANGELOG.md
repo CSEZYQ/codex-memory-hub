@@ -1,5 +1,14 @@
 # 更新记录
 
+## 1.4.5 - 2026-05-24
+
+- 修复 shell `memory_tools.sh` 的 macOS/POSIX 兼容性：移除 GNU-only `find -mindepth/-maxdepth` 用法，改为可移植的直接子项枚举。
+- 增强 `doctor` 的 workstream 完整性检查：检测缺失 `workstream.md`、缺失关键 metadata、目录 id 与 frontmatter `workstream` 不一致、未知状态。
+- 将 workstream snapshot 过期判断改为基于事件文件名时间与 snapshot `updated` 字段，而不是依赖文件系统修改时间。
+- 生成的 system index 不再写入绝对 `project_root`，减少用户共享 `.codex-memory/` 时泄露本机路径的风险。
+- README 增加开源用户的插件导入/skill 安装入口说明。
+- 增加回归测试覆盖上述维护层边界。
+
 ## 1.4.4 - 2026-05-24
 
 - 补齐 shell `doctor` 的 `POSSIBLE_CONTINUATION_FORK` 检查，和 PowerShell 版保持一致。
