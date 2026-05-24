@@ -1,5 +1,13 @@
 # 更新记录
 
+## 1.4.3 - 2026-05-24
+
+- 修复 PowerShell `memory_tools.ps1` 解析多行 frontmatter 时误把缩进内容里的 `Note: value` 当成新字段的问题。
+- 统一 `latest_event` 选择规则：PowerShell 和 shell 都按事件文件名协议排序，而不是一个按修改时间、一个按文件名。
+- 优化 shell `thread-index` 生成流程，生成索引和统计状态计数合并为一次线程列表遍历。
+- 移除 shell `doctor` 函数内的 EXIT trap 残留，避免后续函数或未来维护逻辑被隐式 trap 影响。
+- 增加回归测试，覆盖缩进冒号行的 block scalar、跨平台 latest event 选择规则。
+
 ## 1.4.2 - 2026-05-24
 
 - 修复 shell 版 `memory_tools.sh` 手动生成 JSON 时对换行、引号、反斜杠和 Windows UTF-8 BOM 的处理问题。

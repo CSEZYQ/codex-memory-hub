@@ -181,6 +181,7 @@ updated: 2026-05-24 13:05
 status: active
 scope: |
   First line with "quotes"
+  Note: colon line should stay inside scope
   Second line with \backslash
 workstream: audit-stream
 ---
@@ -210,10 +211,10 @@ status: active
             Pop-Location
         }
         $shellThreadIndexRaw = Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/thread-index.json")
-        Assert-True ($shellThreadIndexRaw -match 'First line with \\"quotes\\"\\nSecond line with \\\\backslash') "shell index should escape quotes, newlines, and backslashes in JSON strings"
+        Assert-True ($shellThreadIndexRaw -match 'First line with \\"quotes\\"\\nNote: colon line should stay inside scope\\nSecond line with \\\\backslash') "shell index should escape quotes, newlines, and backslashes in JSON strings"
         $shellThreadIndex = $shellThreadIndexRaw | ConvertFrom-Json
         $shellWorkstreamIndex = Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json
-        $expectedScope = "First line with `"quotes`"`nSecond line with \backslash"
+        $expectedScope = "First line with `"quotes`"`nNote: colon line should stay inside scope`nSecond line with \backslash"
         Assert-True ($psThreadIndex.threads[0].scope -eq $expectedScope) "PowerShell index should parse literal block scalar scope"
         Assert-True ($shellThreadIndex.threads[0].scope -eq $expectedScope) "shell index should parse literal block scalar scope"
         $psThreadProps = @($psThreadIndex.threads[0].PSObject.Properties.Name | Sort-Object)
@@ -224,6 +225,26 @@ status: active
         Assert-True (($psWorkstreamProps -join "|") -eq ($shellWorkstreamProps -join "|")) "shell workstream index schema should match PowerShell workstream index schema"
         Assert-True ($shellThreadIndex.active_count -eq $psThreadIndex.active_count) "shell thread index should include active_count"
         Assert-True ($shellWorkstreamIndex.workstreams[0].snapshot_exists -eq $psWorkstreamIndex.workstreams[0].snapshot_exists) "shell workstream index should include snapshot_exists"
+
+        $olderNameLaterMtime = Join-Path $shellParityProject ".codex-memory/workstreams/audit-stream/events/2026-05-24-120000-older-name.md"
+        $newerNameEarlierMtime = Join-Path $shellParityProject ".codex-memory/workstreams/audit-stream/events/2026-05-24-140000-newer-name.md"
+        Set-Content -LiteralPath $newerNameEarlierMtime -Encoding UTF8 -Value "newer name, earlier mtime"
+        Start-Sleep -Milliseconds 1100
+        Set-Content -LiteralPath $olderNameLaterMtime -Encoding UTF8 -Value "older name, later mtime"
+        Invoke-MemoryToolsPowerShell $shellParityProject "index" | Out-Null
+        $psLatestByName = (Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json).workstreams[0].latest_event
+        Push-Location $RepoRoot
+        try {
+            bash -c "sh skill/codex-memory-hub/scripts/memory_tools.sh --path .codex-memory-hub-shell-parity index >/dev/null"
+            if ($LASTEXITCODE -ne 0) {
+                throw "shell index failed for latest-event parity project"
+            }
+        } finally {
+            Pop-Location
+        }
+        $shellLatestByName = (Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json).workstreams[0].latest_event
+        Assert-True ($psLatestByName -eq ".codex-memory/workstreams/audit-stream/events/2026-05-24-140000-newer-name.md") "PowerShell latest_event should follow event filename order"
+        Assert-True ($shellLatestByName -eq $psLatestByName) "shell latest_event should match PowerShell latest_event"
     } finally {
         if (Test-Path -LiteralPath $shellParityProject) {
             Remove-Item -LiteralPath $shellParityProject -Recurse -Force

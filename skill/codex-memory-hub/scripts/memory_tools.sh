@@ -236,7 +236,6 @@ latest_event_path() {
 run_doctor() {
   ISSUES_FILE=$(mktemp)
   THREAD_WORKSTREAMS_FILE=$(mktemp)
-  trap 'rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE"' EXIT
 
   thread_count=$(count_files "$THREADS_ROOT" "*.md")
   workstream_count=0
@@ -374,8 +373,10 @@ run_doctor() {
   fi
 
   if grep -q '^\[ERROR\]' "$ISSUES_FILE"; then
+    rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE"
     return 1
   fi
+  rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE"
   return 0
 }
 
@@ -383,52 +384,36 @@ write_thread_index() {
   mkdir -p "$SYSTEM_ROOT"
   output="$SYSTEM_ROOT/thread-index.json"
   generated_at=$(date "+%Y-%m-%d %H:%M:%S")
-  thread_count=$(count_files "$THREADS_ROOT" "*.md")
+  thread_count=0
   active_count=0
   done_count=0
   archived_count=0
+  entries_file=$(mktemp)
+  first=1
   if [ -d "$THREADS_ROOT" ]; then
-    count_thread_list=$(mktemp)
-    find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$count_thread_list"
-    while IFS= read -r count_thread_file; do
-      [ -n "$count_thread_file" ] || continue
-      count_status=$(frontmatter_value "$count_thread_file" status)
-      case "$count_status" in
+    thread_list=$(mktemp)
+    find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
+    while IFS= read -r thread_file; do
+      [ -n "$thread_file" ] || continue
+      thread_count=$((thread_count + 1))
+      thread_status=$(frontmatter_value "$thread_file" status)
+      case "$thread_status" in
         active) active_count=$((active_count + 1)) ;;
         done) done_count=$((done_count + 1)) ;;
         archived) archived_count=$((archived_count + 1)) ;;
       esac
-    done < "$count_thread_list"
-    rm -f "$count_thread_list"
-  fi
-  {
-    printf '{\n'
-    printf '  "schema": "codex-memory-hub.thread-index.v1",\n'
-    printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
-    printf '  "project_root": "%s",\n' "$(json_escape "$PROJECT_ROOT")"
-    printf '  "memory_root": ".codex-memory",\n'
-    printf '  "thread_count": %s,\n' "$thread_count"
-    printf '  "active_count": %s,\n' "$active_count"
-    printf '  "done_count": %s,\n' "$done_count"
-    printf '  "archived_count": %s,\n' "$archived_count"
-    printf '  "threads": [\n'
-    first=1
-    if [ -d "$THREADS_ROOT" ]; then
-      thread_list=$(mktemp)
-      find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$thread_list"
-      while IFS= read -r thread_file; do
-        [ -n "$thread_file" ] || continue
-        if [ "$first" -eq 0 ]; then
-          printf ',\n'
-        fi
-        first=0
+      if [ "$first" -eq 0 ]; then
+        printf ',\n' >> "$entries_file"
+      fi
+      first=0
+      {
         printf '    {\n'
         printf '      "name": "%s",\n' "$(json_escape "$(basename "$thread_file")")"
         printf '      "path": "%s",\n' "$(json_escape "$(relative_path "$thread_file")")"
         printf '      "thread": "%s",\n' "$(json_escape "$(frontmatter_value "$thread_file" thread)")"
         printf '      "created": "%s",\n' "$(json_escape "$(frontmatter_value "$thread_file" created)")"
         printf '      "updated": "%s",\n' "$(json_escape "$(frontmatter_value "$thread_file" updated)")"
-        printf '      "status": "%s",\n' "$(json_escape "$(frontmatter_value "$thread_file" status)")"
+        printf '      "status": "%s",\n' "$(json_escape "$thread_status")"
         printf '      "scope": "%s",\n' "$(json_escape "$(frontmatter_value "$thread_file" scope)")"
         printf '      "workstream": "%s",\n' "$(json_escape "$(frontmatter_value "$thread_file" workstream)")"
         printf '      "continues_from": ['
@@ -448,12 +433,26 @@ write_thread_index() {
         printf '      "size_bytes": %s,\n' "$(file_size_bytes "$thread_file")"
         printf '      "modified_at": "%s"\n' "$(json_escape "$(file_modified_at "$thread_file")")"
         printf '    }'
-      done < "$thread_list"
-      rm -f "$thread_list"
-    fi
+      } >> "$entries_file"
+    done < "$thread_list"
+    rm -f "$thread_list"
+  fi
+  {
+    printf '{\n'
+    printf '  "schema": "codex-memory-hub.thread-index.v1",\n'
+    printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
+    printf '  "project_root": "%s",\n' "$(json_escape "$PROJECT_ROOT")"
+    printf '  "memory_root": ".codex-memory",\n'
+    printf '  "thread_count": %s,\n' "$thread_count"
+    printf '  "active_count": %s,\n' "$active_count"
+    printf '  "done_count": %s,\n' "$done_count"
+    printf '  "archived_count": %s,\n' "$archived_count"
+    printf '  "threads": [\n'
+    cat "$entries_file"
     printf '\n  ]\n'
     printf '}\n'
   } > "$output"
+  rm -f "$entries_file"
 }
 
 write_workstream_index() {

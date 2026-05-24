@@ -118,7 +118,7 @@ function Read-FrontMatter {
                 $index++
                 while ($index -lt $lines.Count) {
                     $blockLine = $lines[$index]
-                    if ($blockLine -match "^\s{0,2}[A-Za-z0-9_-]+:\s*") {
+                    if ($blockLine -match "^[A-Za-z0-9_-]+:\s*") {
                         $index--
                         break
                     }
@@ -247,7 +247,7 @@ function Get-WorkstreamRecords {
 
         $latestEvent = $null
         if ($events.Count -gt 0) {
-            $latestEvent = ($events | Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+            $latestEvent = ($events | Sort-Object Name -Descending | Select-Object -First 1)
         }
 
         $activeThreads = @(
