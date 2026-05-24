@@ -7,7 +7,9 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+.codex-memory-hub-test-runtime.sh
 
-# Local Codex Memory Hub state for this repository
+# Local generated Codex Memory Hub state for developing this plugin.
+# The public plugin instructions live under skill/codex-memory-hub/.
 AGENTS.md
 .codex-memory/

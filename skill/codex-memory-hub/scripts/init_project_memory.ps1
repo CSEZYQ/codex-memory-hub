@@ -79,7 +79,7 @@ function Ensure-LocalMemoryGitignore {
 
     if (Test-Path -LiteralPath $gitignore) {
         $content = Get-Content -Raw -LiteralPath $gitignore
-        if ($content -match "(?m)^\.codex-memory/$") {
+        if ($content -match "(?m)^\.codex-memory/\r?$") {
             return
         }
         $prefix = if ($content.EndsWith("`n")) { "" } else { "`n" }
@@ -93,14 +93,14 @@ function Ensure-LocalMemoryGitignore {
 
 function Migrate-LegacyWikiIfNeeded {
     if (-not (Test-Path -LiteralPath $LegacyWikiRoot)) {
-        return
+        return $false
     }
 
     Write-Host "legacy memory detected: $LegacyWikiRoot"
 
     $legacyProject = Join-Path $LegacyWikiRoot "project.md"
     $projectMemory = Join-Path $MemoryRoot "project.md"
-    if ((Test-Path -LiteralPath $legacyProject) -and (-not (Test-Path -LiteralPath $projectMemory))) {
+    if (Test-Path -LiteralPath $legacyProject) {
         $legacyProjectContent = Get-Content -Raw -LiteralPath $legacyProject
         $migratedProject = @"
 ---
@@ -122,7 +122,7 @@ $legacyProjectContent
 "@
         Write-FileIfNeeded $projectMemory $migratedProject
     }
-    elseif (-not (Test-Path -LiteralPath $projectMemory)) {
+    else {
         $legacyOverview = Join-Path $LegacyWikiRoot "project-overview.md"
         if (Test-Path -LiteralPath $legacyOverview) {
             $legacyOverviewContent = Get-Content -Raw -LiteralPath $legacyOverview
@@ -149,7 +149,6 @@ $legacyOverviewContent
     }
 
     $legacyProjectPages = @(
-        "project-overview.md",
         "current-status.md",
         "next-actions.md",
         "decisions.md",
@@ -273,10 +272,12 @@ source: init_project_memory.ps1
         Remove-Item -LiteralPath $DocsRoot -Force
         Write-Host "remove empty: $DocsRoot"
     }
+
+    return $true
 }
 
 New-Item -ItemType Directory -Force -Path $ThreadsRoot, $WorkstreamsRoot, $ArchiveRoot | Out-Null
-Migrate-LegacyWikiIfNeeded
+$MigratedLegacyWiki = Migrate-LegacyWikiIfNeeded
 
 $agents = @"
 # $ProjectName Agent Rules
@@ -308,7 +309,7 @@ Ask the user only when several memories match equally well, memories conflict in
 
 Store thread memory under `.codex-memory/threads/` with a unique filename:
 
-YYYY-MM-DD-HHMM-<short-task>.md
+YYYY-MM-DD-HHMMSS-<short-task>.md
 
 Each thread memory file should include:
 
@@ -401,10 +402,12 @@ This file is optional stable background. It is not a live status tracker.
 
 Write-FileIfNeeded (Join-Path $ProjectRoot "AGENTS.md") $agents
 Write-FileIfNeeded (Join-Path $MemoryRoot "index.md") $index
-Write-FileIfNeeded (Join-Path $MemoryRoot "project.md") $project
-Write-FileIfNeeded (Join-Path $ThreadsRoot ".gitkeep") ""
-Write-FileIfNeeded (Join-Path $WorkstreamsRoot ".gitkeep") ""
-Write-FileIfNeeded (Join-Path $ArchiveRoot ".gitkeep") ""
+$projectMemoryPath = Join-Path $MemoryRoot "project.md"
+if ($MigratedLegacyWiki -and (Test-Path -LiteralPath $projectMemoryPath)) {
+    Write-Host "preserve migrated project memory: $projectMemoryPath"
+} else {
+    Write-FileIfNeeded $projectMemoryPath $project
+}
 Ensure-LocalMemoryGitignore
 
 Write-Host ""

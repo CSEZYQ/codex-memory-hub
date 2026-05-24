@@ -55,6 +55,7 @@ DOCS_ROOT="$PROJECT_ROOT/docs"
 TODAY=$(date +%Y-%m-%d)
 NOW=$(date "+%Y-%m-%d %H:%M")
 STAMP=$(date +%Y-%m-%d-%H%M%S)
+MIGRATED_LEGACY_WIKI=0
 
 write_file_if_needed() {
   file_path=$1
@@ -124,11 +125,15 @@ migrate_legacy_wiki_if_needed() {
     return
   fi
 
+  MIGRATED_LEGACY_WIKI=1
   echo "legacy memory detected: $LEGACY_WIKI_ROOT"
 
   legacy_project="$LEGACY_WIKI_ROOT/project.md"
   project_memory="$MEMORY_ROOT/project.md"
-  if [ -f "$legacy_project" ] && [ ! -e "$project_memory" ]; then
+  if [ -f "$legacy_project" ]; then
+    if [ -e "$project_memory" ] && [ "$FORCE" -ne 1 ]; then
+      echo "skip existing: $project_memory"
+    else
     {
       cat <<EOF
 ---
@@ -150,9 +155,13 @@ EOF
       cat "$legacy_project"
     } > "$project_memory"
     echo "write: $project_memory"
-  elif [ ! -e "$project_memory" ]; then
+    fi
+  else
     legacy_overview="$LEGACY_WIKI_ROOT/project-overview.md"
     if [ -f "$legacy_overview" ]; then
+      if [ -e "$project_memory" ] && [ "$FORCE" -ne 1 ]; then
+        echo "skip existing: $project_memory"
+      else
       {
         cat <<EOF
 ---
@@ -174,10 +183,11 @@ EOF
         cat "$legacy_overview"
       } > "$project_memory"
       echo "write: $project_memory"
+      fi
     fi
   fi
 
-  legacy_project_pages="project-overview.md current-status.md next-actions.md decisions.md session-log.md ideas.md log.md"
+  legacy_project_pages="current-status.md next-actions.md decisions.md session-log.md ideas.md log.md"
   existing_legacy_pages=""
   for legacy_page in $legacy_project_pages; do
     legacy_page_path="$LEGACY_WIKI_ROOT/$legacy_page"
@@ -291,9 +301,7 @@ source: init_project_memory.sh
 mkdir -p "$THREADS_ROOT" "$WORKSTREAMS_ROOT" "$ARCHIVE_ROOT"
 migrate_legacy_wiki_if_needed
 
-AGENTS_CONTENT=$(cat <<EOF
-# $PROJECT_NAME Agent Rules
-
+AGENTS_BODY=$(cat <<'EOF'
 This project uses Codex Memory Hub. Keep the project root clean: AGENTS.md is the entrypoint and .codex-memory/ contains all memory data.
 
 ## Startup
@@ -321,7 +329,7 @@ Ask the user only when several memories match equally well, memories conflict in
 
 Store thread memory under .codex-memory/threads/ with a unique filename:
 
-YYYY-MM-DD-HHMM-<short-task>.md
+YYYY-MM-DD-HHMMSS-<short-task>.md
 
 Each thread memory file should include:
 
@@ -374,6 +382,7 @@ Only update .codex-memory/project.md or create a project-level summary when the 
 If the current thread memory file changed while this thread was preparing to write, re-read it and append carefully. If a safe append is not possible, create a new sibling file with a -fork-<shortid> suffix and mark which file it forked from.
 EOF
 )
+AGENTS_CONTENT=$(printf '# %s Agent Rules\n\n%s' "$PROJECT_NAME" "$AGENTS_BODY")
 
 INDEX_CONTENT=$(cat <<EOF
 # Codex Memory Index
@@ -417,10 +426,11 @@ EOF
 
 write_file_if_needed "$PROJECT_ROOT/AGENTS.md" "$AGENTS_CONTENT"
 write_file_if_needed "$MEMORY_ROOT/index.md" "$INDEX_CONTENT"
-write_file_if_needed "$MEMORY_ROOT/project.md" "$PROJECT_CONTENT"
-write_file_if_needed "$THREADS_ROOT/.gitkeep" ""
-write_file_if_needed "$WORKSTREAMS_ROOT/.gitkeep" ""
-write_file_if_needed "$ARCHIVE_ROOT/.gitkeep" ""
+if [ "$MIGRATED_LEGACY_WIKI" -eq 1 ] && [ -e "$MEMORY_ROOT/project.md" ]; then
+  echo "preserve migrated project memory: $MEMORY_ROOT/project.md"
+else
+  write_file_if_needed "$MEMORY_ROOT/project.md" "$PROJECT_CONTENT"
+fi
 ensure_local_memory_gitignore
 
 echo ""

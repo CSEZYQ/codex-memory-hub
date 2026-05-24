@@ -44,7 +44,8 @@ It skips existing files by default. Use `-Force` in PowerShell or `--force` in s
 If a project already has legacy `docs/wiki/` memory, the initializer migrates it automatically:
 
 - Copy legacy thread memories into `.codex-memory/threads/`.
-- Convert first public project-memory pages such as `project-overview.md`, `current-status.md`, `next-actions.md`, `decisions.md`, `session-log.md`, `ideas.md`, and `log.md` into an active `.codex-memory/threads/*-legacy-project-memory.md` file.
+- Convert first public `project-overview.md` into `.codex-memory/project.md` when no legacy `project.md` exists.
+- Convert first public status pages such as `current-status.md`, `next-actions.md`, `decisions.md`, `session-log.md`, `ideas.md`, and `log.md` into an active `.codex-memory/threads/*-legacy-project-memory.md` file.
 - Preserve legacy files under `.codex-memory/archive/legacy-docs-wiki...`.
 - Create a `legacy-migration` workstream event.
 - Remove the empty legacy `docs/` folder when it is safe.
@@ -108,7 +109,7 @@ Low-confidence behavior:
 Create thread memory files under `.codex-memory/threads/` with unique names:
 
 ```text
-YYYY-MM-DD-HHMM-<short-task>.md
+YYYY-MM-DD-HHMMSS-<short-task>.md
 ```
 
 Use this structure:
@@ -206,6 +207,8 @@ Do not automatically create or update legacy shared status files such as `curren
 Project-level files are optional stable background. Update `.codex-memory/project.md` only when the user explicitly asks to summarize, consolidate, or update project-level memory.
 
 If the current thread memory file changed while this thread was preparing to write, re-read the latest file and append carefully. If a safe append is not possible, create a new sibling thread memory file with a `-fork-<shortid>` suffix and clearly mark which file it forked from.
+
+Thread memories and workstream events are append-only by default. Do not delete or compact them automatically. When the user asks to clean up memory, archive obsolete threads/events under `.codex-memory/archive/` and rebuild any stale `snapshot.md` from the remaining thread memories and events.
 
 ## Multi-Project Rule
 

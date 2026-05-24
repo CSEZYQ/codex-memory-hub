@@ -1,5 +1,14 @@
 # 更新记录
 
+## 1.3.5 - 2026-05-24
+
+- 移除初始化脚本创建 `.gitkeep` 的行为；`.codex-memory/` 默认本地忽略时不再生成无意义的占位文件。
+- 修复旧版迁移：`project-overview.md` 不再同时写入 `project.md` 和 legacy thread memory。
+- 修复 `--force` 对旧版迁移 `project.md` 不生效的问题。
+- Shell 初始化模板改用 quoted heredoc 生成 `AGENTS.md` 主体，降低未来模板内容被 shell 展开的风险。
+- 线程文件名建议从分钟级改为秒级，降低并发创建冲突。
+- 补充轻量测试脚本，覆盖初始化、旧版迁移、`--force` 和 shell 路径。
+
 ## 1.3.4 - 2026-05-24
 
 - 明确新 Codex 会话默认创建新的 thread memory，旧 thread memory 默认只读，不再把“续写旧任务”误写成“继续写旧线程文件”。
