@@ -50,6 +50,7 @@ MEMORY_ROOT="$PROJECT_ROOT/.codex-memory"
 THREADS_ROOT="$MEMORY_ROOT/threads"
 WORKSTREAMS_ROOT="$MEMORY_ROOT/workstreams"
 ARCHIVE_ROOT="$MEMORY_ROOT/archive"
+SYSTEM_ROOT="$MEMORY_ROOT/system"
 LEGACY_WIKI_ROOT="$PROJECT_ROOT/docs/wiki"
 DOCS_ROOT="$PROJECT_ROOT/docs"
 TODAY=$(date +%Y-%m-%d)
@@ -298,7 +299,7 @@ source: init_project_memory.sh
   rmdir "$DOCS_ROOT" 2>/dev/null || true
 }
 
-mkdir -p "$THREADS_ROOT" "$WORKSTREAMS_ROOT" "$ARCHIVE_ROOT"
+mkdir -p "$THREADS_ROOT" "$WORKSTREAMS_ROOT" "$ARCHIVE_ROOT" "$SYSTEM_ROOT"
 migrate_legacy_wiki_if_needed
 
 AGENTS_BODY=$(cat <<'EOF'
@@ -312,10 +313,16 @@ For non-trivial work:
 2. Read .codex-memory/project.md if it exists.
 3. Scan .codex-memory/threads/ for relevant thread memories.
 4. Scan .codex-memory/workstreams/ for matching workstreams and snapshots.
-5. Infer read context and write target separately from the user request, current directory, changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
-6. Continue with the inferred targets without asking when confidence is high.
+5. If .codex-memory/system/thread-index.json or .codex-memory/system/workstream-index.json exists, use it as a quick map before opening full memory files.
+6. Infer read context and write target separately from the user request, current directory, changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
+7. Continue with the inferred targets without asking when confidence is high.
 
 If legacy docs/wiki/ memory exists, migrate it into .codex-memory/ automatically before normal work. Do not make the user manually reorganize old memory files.
+
+When the Codex Memory Hub skill is available, use its bundled memory_tools.ps1 for deterministic maintenance:
+
+- doctor checks structure, broken continues_from links, stale workstream snapshots, Git privacy defaults, and possible secrets.
+- index refreshes .codex-memory/system/thread-index.json and .codex-memory/system/workstream-index.json.
 
 If there is no thread memory file, create a new one. If no existing memory clearly matches the task, create a new thread memory file and, when useful, a new workstream.
 
@@ -391,8 +398,10 @@ INDEX_CONTENT=$(cat <<EOF
 - [threads/](./threads/)
 - [workstreams/](./workstreams/)
 - [archive/](./archive/)
+- [system/](./system/)
 
 Root policy: keep project memory inside .codex-memory/; keep only AGENTS.md in the project root.
+Maintenance policy: generated indexes live under .codex-memory/system/.
 EOF
 )
 
@@ -440,3 +449,4 @@ echo "- Entry:       $PROJECT_ROOT/AGENTS.md"
 echo "- Memory root: $MEMORY_ROOT"
 echo "- Threads:     $THREADS_ROOT"
 echo "- Workstreams: $WORKSTREAMS_ROOT"
+echo "- System:      $SYSTEM_ROOT"

@@ -1,7 +1,7 @@
 {
   "name": "codex-memory-hub",
-  "version": "1.3.5",
-  "description": "Codex memory plugin for clean, restartable, parallel project work with automatic memory intent detection.",
+  "version": "1.4.0",
+  "description": "Codex memory plugin for clean, restartable, parallel project work with automatic memory intent detection and lightweight deterministic maintenance.",
   "license": "MIT",
   "keywords": [
     "codex",
@@ -15,7 +15,7 @@
   "interface": {
     "displayName": "Codex Memory Hub",
     "shortDescription": "Automatic thread memory for Codex project work.",
-    "longDescription": "Initializes a clean Codex memory layout for Windows, macOS, and Linux. The project root keeps only AGENTS.md while all memory data lives under .codex-memory with per-thread logs, continues_from handoff links, automatic workstream inference, archive folders, legacy docs/wiki migration, and safe local Git defaults.",
+    "longDescription": "Initializes a clean Codex memory layout for Windows, macOS, and Linux. The project root keeps only AGENTS.md while all memory data lives under .codex-memory with per-thread logs, continues_from handoff links, automatic workstream inference, archive folders, generated system indexes, legacy docs/wiki migration, deterministic doctor/index maintenance, and safe local Git defaults.",
     "developerName": "Codex Memory Hub",
     "category": "Productivity",
     "capabilities": [

@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $PsInit = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/init_project_memory.ps1"
+$PsMemoryTools = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/memory_tools.ps1"
 $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-memory-hub-tests-" + [guid]::NewGuid().ToString("N"))
 
 function Assert-True {
@@ -43,6 +44,31 @@ function Invoke-InitPowerShell {
     }
 }
 
+function Invoke-MemoryToolsPowerShell {
+    param(
+        [string]$ProjectPath,
+        [string]$Command
+    )
+
+    $args = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $PsMemoryTools,
+        "-Path",
+        $ProjectPath,
+        "-Command",
+        $Command
+    )
+
+    $output = & powershell @args 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Memory tools command '$Command' failed for $ProjectPath`n$output"
+    }
+    return ($output -join "`n")
+}
+
 try {
     New-Item -ItemType Directory -Path $TempRoot | Out-Null
 
@@ -53,8 +79,104 @@ try {
 
     Assert-True (Test-Path -LiteralPath (Join-Path $cleanProject "AGENTS.md")) "clean init did not create AGENTS.md"
     Assert-True (Test-Path -LiteralPath (Join-Path $cleanProject ".codex-memory/threads")) "clean init did not create threads directory"
+    Assert-True (Test-Path -LiteralPath (Join-Path $cleanProject ".codex-memory/system")) "clean init did not create system directory"
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $cleanProject ".codex-memory/threads/.gitkeep"))) "clean init should not create ignored .gitkeep files"
     Assert-True ((Get-Content -Raw -LiteralPath (Join-Path $cleanProject ".gitignore")) -match "(?m)^\.codex-memory/\r?$") "clean init did not gitignore .codex-memory/"
+
+    Invoke-MemoryToolsPowerShell $cleanProject "index" | Out-Null
+    $threadIndexPath = Join-Path $cleanProject ".codex-memory/system/thread-index.json"
+    $workstreamIndexPath = Join-Path $cleanProject ".codex-memory/system/workstream-index.json"
+    Assert-True (Test-Path -LiteralPath $threadIndexPath) "index command did not create thread-index.json"
+    Assert-True (Test-Path -LiteralPath $workstreamIndexPath) "index command did not create workstream-index.json"
+    $threadIndex = Get-Content -Raw -LiteralPath $threadIndexPath | ConvertFrom-Json
+    Assert-True ($threadIndex.threads.Count -eq 0) "clean thread index should contain no threads"
+
+    $indexedProject = Join-Path $TempRoot "indexed"
+    New-Item -ItemType Directory -Path $indexedProject | Out-Null
+    Invoke-InitPowerShell $indexedProject
+    $threadsPath = Join-Path $indexedProject ".codex-memory/threads"
+    $oldThreadPath = Join-Path $threadsPath "2026-05-24-100000-ppt-images.md"
+    $newThreadPath = Join-Path $threadsPath "2026-05-24-110000-continue-ppt-images.md"
+    Set-Content -LiteralPath $oldThreadPath -Encoding UTF8 -Value @"
+---
+thread: ppt-images
+created: 2026-05-24 10:00
+updated: 2026-05-24 10:30
+status: done
+scope: Generate PPT images.
+workstream: ppt-images
+---
+
+# PPT Images
+"@
+    Set-Content -LiteralPath $newThreadPath -Encoding UTF8 -Value @"
+---
+thread: continue-ppt-images
+created: 2026-05-24 11:00
+updated: 2026-05-24 11:20
+status: active
+scope: Continue PPT images.
+workstream: ppt-images
+continues_from:
+  - .codex-memory/threads/2026-05-24-100000-ppt-images.md
+---
+
+# Continue PPT Images
+"@
+    New-Item -ItemType Directory -Path (Join-Path $indexedProject ".codex-memory/workstreams/ppt-images/events") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $indexedProject ".codex-memory/workstreams/ppt-images/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: ppt-images
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# PPT Images
+"@
+    Set-Content -LiteralPath (Join-Path $indexedProject ".codex-memory/workstreams/ppt-images/events/2026-05-24-112000-continue-ppt-images-progress.md") -Encoding UTF8 -Value @"
+---
+event: continue-ppt-images-progress
+created: 2026-05-24 11:20
+type: progress
+thread: .codex-memory/threads/2026-05-24-110000-continue-ppt-images.md
+---
+
+# Progress
+"@
+    Invoke-MemoryToolsPowerShell $indexedProject "index" | Out-Null
+    $indexedThreads = Get-Content -Raw -LiteralPath (Join-Path $indexedProject ".codex-memory/system/thread-index.json") | ConvertFrom-Json
+    Assert-True ($indexedThreads.threads.Count -eq 2) "thread index should include both thread memories"
+    Assert-True (($indexedThreads.threads | Where-Object { $_.name -eq "2026-05-24-110000-continue-ppt-images.md" }).continues_from.Count -eq 1) "thread index should preserve continues_from metadata"
+    $indexedWorkstreams = Get-Content -Raw -LiteralPath (Join-Path $indexedProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json
+    Assert-True ($indexedWorkstreams.workstreams.Count -eq 1) "workstream index should include one workstream"
+    Assert-True ($indexedWorkstreams.workstreams[0].event_count -eq 1) "workstream index should count event files"
+
+    $doctorOutput = Invoke-MemoryToolsPowerShell $indexedProject "doctor"
+    Assert-True ($doctorOutput -match "No errors found") "doctor should report no errors for indexed sample project"
+
+    $brokenProject = Join-Path $TempRoot "broken"
+    New-Item -ItemType Directory -Path $brokenProject | Out-Null
+    Invoke-InitPowerShell $brokenProject
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/threads/2026-05-24-120000-broken.md") -Encoding UTF8 -Value @"
+---
+thread: broken
+created: 2026-05-24 12:00
+updated: 2026-05-24 12:10
+status: active
+scope: Broken continuation.
+continues_from:
+  - .codex-memory/threads/missing.md
+---
+
+# Broken
+
+api_key: sk-testtesttesttesttesttest
+"@
+    $brokenDoctorOutput = Invoke-MemoryToolsPowerShell $brokenProject "doctor"
+    Assert-True ($brokenDoctorOutput -match "Threads: 1") "doctor should count a single thread correctly"
+    Assert-True ($brokenDoctorOutput -match "BROKEN_CONTINUES_FROM") "doctor should warn about missing continues_from target"
+    Assert-True ($brokenDoctorOutput -match "POSSIBLE_SECRET") "doctor should warn about possible secrets in memory files"
 
     $legacyOverviewProject = Join-Path $TempRoot "legacy-overview"
     New-Item -ItemType Directory -Path (Join-Path $legacyOverviewProject "docs/wiki") -Force | Out-Null

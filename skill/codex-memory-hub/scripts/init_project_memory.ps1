@@ -25,6 +25,7 @@ $MemoryRoot = Join-Path $ProjectRoot ".codex-memory"
 $ThreadsRoot = Join-Path $MemoryRoot "threads"
 $WorkstreamsRoot = Join-Path $MemoryRoot "workstreams"
 $ArchiveRoot = Join-Path $MemoryRoot "archive"
+$SystemRoot = Join-Path $MemoryRoot "system"
 $LegacyWikiRoot = Join-Path (Join-Path $ProjectRoot "docs") "wiki"
 $DocsRoot = Join-Path $ProjectRoot "docs"
 $Today = Get-Date -Format "yyyy-MM-dd"
@@ -276,7 +277,7 @@ source: init_project_memory.ps1
     return $true
 }
 
-New-Item -ItemType Directory -Force -Path $ThreadsRoot, $WorkstreamsRoot, $ArchiveRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $ThreadsRoot, $WorkstreamsRoot, $ArchiveRoot, $SystemRoot | Out-Null
 $MigratedLegacyWiki = Migrate-LegacyWikiIfNeeded
 
 $agents = @"
@@ -292,10 +293,16 @@ For non-trivial work:
 2. Read `.codex-memory/project.md` if it exists.
 3. Scan `.codex-memory/threads/` for relevant thread memories.
 4. Scan `.codex-memory/workstreams/` for matching workstreams and snapshots.
-5. Infer read context and write target separately from the user request, current directory, changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
-6. Continue with the inferred targets without asking when confidence is high.
+5. If `.codex-memory/system/thread-index.json` or `.codex-memory/system/workstream-index.json` exists, use it as a quick map before opening full memory files.
+6. Infer read context and write target separately from the user request, current directory, changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
+7. Continue with the inferred targets without asking when confidence is high.
 
 If legacy `docs/wiki/` memory exists, migrate it into `.codex-memory/` automatically before normal work. Do not make the user manually reorganize old memory files.
+
+When the Codex Memory Hub skill is available, use its bundled `memory_tools.ps1` for deterministic maintenance:
+
+- `doctor` checks structure, broken `continues_from` links, stale workstream snapshots, Git privacy defaults, and possible secrets.
+- `index` refreshes `.codex-memory/system/thread-index.json` and `.codex-memory/system/workstream-index.json`.
 
 If there is no thread memory file, create a new one. If no existing memory clearly matches the task, create a new thread memory file and, when useful, a new workstream.
 
@@ -369,8 +376,10 @@ $index = @"
 - [threads/](./threads/)
 - [workstreams/](./workstreams/)
 - [archive/](./archive/)
+- [system/](./system/)
 
 Root policy: keep project memory inside `.codex-memory/`; keep only `AGENTS.md` in the project root.
+Maintenance policy: generated indexes live under `.codex-memory/system/`.
 "@
 
 $project = @"
@@ -417,3 +426,4 @@ Write-Host "- Entry:       $(Join-Path $ProjectRoot 'AGENTS.md')"
 Write-Host "- Memory root: $MemoryRoot"
 Write-Host "- Threads:     $ThreadsRoot"
 Write-Host "- Workstreams: $WorkstreamsRoot"
+Write-Host "- System:      $SystemRoot"

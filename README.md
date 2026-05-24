@@ -51,6 +51,7 @@ AGENTS.md
   threads/
   workstreams/
   archive/
+  system/
 ```
 
 每个文件夹的作用：
@@ -61,6 +62,7 @@ project.md     项目稳定背景，不当实时进度
 threads/       每个 Codex 线程自己的记忆
 workstreams/   多个线程做同一件事时的归组
 archive/       旧版记忆和归档内容
+system/        自动生成的检查和索引文件
 ```
 
 ## 自动记忆规则
@@ -74,6 +76,7 @@ continues_from     记录本轮继承了哪些旧 thread
 workstream         把多个 thread 归到同一个任务
 event              线程完成阶段时留下的短记录
 snapshot           快速启动摘要，可从 thread/event 重建
+system index       快速定位相关 thread/workstream 的机器索引
 ```
 
 最重要的规则：
@@ -133,6 +136,36 @@ workstream -> 把三条线程归到同一功能
 ```
 
 如果主题不同，Codex 会自动分开。
+
+## 确定性维护工具
+
+插件自带一个轻量维护脚本：
+
+```text
+memory_tools.ps1 doctor
+memory_tools.ps1 index
+```
+
+`doctor` 只检查，不改记忆内容。它会提示：
+
+```text
+记忆结构是否完整
+旧版 docs/wiki 是否还没迁移
+continues_from 是否断链
+多个 active 线程是否从同一个旧线程分叉
+workstream snapshot 是否过期
+.codex-memory/ 是否已被 Git 忽略
+记忆文件里是否疑似写入密钥或 token
+```
+
+`index` 会生成：
+
+```text
+.codex-memory/system/thread-index.json
+.codex-memory/system/workstream-index.json
+```
+
+这两个文件是可重建索引，不是正式记忆。Codex 可以先读索引，再按需打开相关 thread 和 workstream，避免项目用久后每次都全量读取。
 
 ## 旧版项目
 

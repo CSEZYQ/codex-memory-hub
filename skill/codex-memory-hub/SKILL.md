@@ -38,6 +38,7 @@ The script creates:
 - `.codex-memory/threads/`
 - `.codex-memory/workstreams/`
 - `.codex-memory/archive/`
+- `.codex-memory/system/`
 
 It skips existing files by default. Use `-Force` in PowerShell or `--force` in shell only when the user explicitly wants to overwrite an existing memory scaffold.
 
@@ -58,10 +59,11 @@ When working in a project that has Codex Memory Hub files:
 1. Read `AGENTS.md`.
 2. Read `.codex-memory/index.md`.
 3. Read `.codex-memory/project.md` if it exists.
-4. Scan `.codex-memory/threads/*.md`.
-5. Scan `.codex-memory/workstreams/*/workstream.md` and `.codex-memory/workstreams/*/snapshot.md` when present.
-6. Infer read context and write target separately from the user's request, current directory, recently changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
-7. Continue with the inferred targets without asking when confidence is high. A brief status note is fine; do not interrupt the user just to choose a thread or workstream.
+4. Read `.codex-memory/system/thread-index.json` and `.codex-memory/system/workstream-index.json` when present.
+5. Scan `.codex-memory/threads/*.md` only as needed after using the index map.
+6. Scan `.codex-memory/workstreams/*/workstream.md` and `.codex-memory/workstreams/*/snapshot.md` when present.
+7. Infer read context and write target separately from the user's request, current directory, recently changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
+8. Continue with the inferred targets without asking when confidence is high. A brief status note is fine; do not interrupt the user just to choose a thread or workstream.
 
 If no thread memory file exists, create one. If no existing thread or workstream clearly matches the current task, create a new thread memory file and, when useful, a new workstream.
 
@@ -77,6 +79,36 @@ Ask the user only when automation would be risky or genuinely ambiguous:
 - A destructive action is involved, such as deleting, overwriting, or consolidating memory.
 
 For legacy projects that still use `docs/wiki/`, migrate them into `.codex-memory/` automatically before normal work. Do not make the user manually reorganize old memory files. After migration, read legacy content from `.codex-memory/archive/` as historical context.
+
+## Deterministic Maintenance
+
+The skill is the workflow layer. The bundled maintenance script is the deterministic check/index layer.
+
+PowerShell, including Windows PowerShell or PowerShell Core:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File "<this-skill-dir>/scripts/memory_tools.ps1" -Path "<project-path>" -Command doctor
+pwsh -NoProfile -ExecutionPolicy Bypass -File "<this-skill-dir>/scripts/memory_tools.ps1" -Path "<project-path>" -Command index
+```
+
+If `pwsh` is unavailable on Windows, use `powershell` with the same arguments.
+
+Use `doctor` when memory looks inconsistent, after legacy migration, before sharing `.codex-memory/`, or when the user asks to audit/clean memory. It is read-only and reports:
+
+- Missing memory structure.
+- Missing Git privacy default for `.codex-memory/`.
+- Legacy `docs/wiki/` that still needs migration.
+- Broken `continues_from` links.
+- Multiple active threads continuing from the same predecessor.
+- Workstream snapshots that are missing or stale.
+- Possible secret-like strings in memory files.
+
+Use `index` to refresh:
+
+- `.codex-memory/system/thread-index.json`
+- `.codex-memory/system/workstream-index.json`
+
+These indexes are generated maps, not source memory. Use them to reduce startup scanning, then open only the relevant thread/workstream files. They can be deleted and rebuilt at any time.
 
 ## Intent Detection
 

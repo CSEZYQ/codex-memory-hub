@@ -1,5 +1,13 @@
 # 更新记录
 
+## 1.4.0 - 2026-05-24
+
+- 新增轻量确定性维护脚本 `memory_tools.ps1`。
+- `doctor` 支持只读检查记忆结构、Git 隐私默认值、旧版 `docs/wiki/`、断开的 `continues_from`、可能的分叉、过期 snapshot 和疑似密钥。
+- `index` 支持生成 `.codex-memory/system/thread-index.json` 和 `.codex-memory/system/workstream-index.json`，让 Codex 启动时先看索引再按需读取原始记忆。
+- 初始化结构新增 `.codex-memory/system/`，用于保存可重建的工具生成文件。
+- README 和 skill 文档补充确定性维护工具的使用边界。
+
 ## 1.3.5 - 2026-05-24
 
 - 移除初始化脚本创建 `.gitkeep` 的行为；`.codex-memory/` 默认本地忽略时不再生成无意义的占位文件。
