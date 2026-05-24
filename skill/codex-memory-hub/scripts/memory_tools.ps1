@@ -97,11 +97,41 @@ function Get-EventTimestampFromPath {
     param([string]$Path)
 
     $name = Split-Path -Leaf $Path
-    $match = [regex]::Match($name, "^(\d{4}-\d{2}-\d{2}-\d{6})-")
+    $match = [regex]::Match($name, "^(\d{4}-\d{2}-\d{2})-(\d{4}|\d{6})-")
     if ($match.Success) {
-        return $match.Groups[1].Value
+        $time = $match.Groups[2].Value
+        if ($time.Length -eq 4) {
+            $time = "${time}00"
+        }
+        return "$($match.Groups[1].Value)-$time"
     }
     return ""
+}
+
+function Get-LatestEventFile {
+    param([array]$Events)
+
+    if ($Events.Count -eq 0) {
+        return $null
+    }
+
+    $timestampedEvents = @(
+        foreach ($event in $Events) {
+            $timestamp = Get-EventTimestampFromPath $event.FullName
+            if (-not [string]::IsNullOrWhiteSpace($timestamp)) {
+                [pscustomobject]@{
+                    File      = $event
+                    Timestamp = $timestamp
+                }
+            }
+        }
+    )
+
+    if ($timestampedEvents.Count -gt 0) {
+        return ($timestampedEvents | Sort-Object Timestamp -Descending | Select-Object -First 1).File
+    }
+
+    return ($Events | Sort-Object Name -Descending | Select-Object -First 1)
 }
 
 function Get-MetadataValue {
@@ -278,7 +308,7 @@ function Get-WorkstreamRecords {
 
         $latestEvent = $null
         if ($events.Count -gt 0) {
-            $latestEvent = ($events | Sort-Object Name -Descending | Select-Object -First 1)
+            $latestEvent = Get-LatestEventFile $events
         }
 
         $activeThreads = @(
@@ -369,8 +399,8 @@ function Test-MemoryHealth {
     }
 
     foreach ($thread in $ThreadRecords) {
-        if ($thread.name -notmatch "^\d{4}-\d{2}-\d{2}-\d{6}-.+\.md$") {
-            Add-DoctorIssue $issues "warning" "NON_STANDARD_THREAD_FILENAME" $thread.path "Thread filename should use YYYY-MM-DD-HHMMSS-<short-task>.md."
+        if ($thread.name -notmatch "^\d{4}-\d{2}-\d{2}-(\d{4}|\d{6})-.+\.md$") {
+            Add-DoctorIssue $issues "warning" "NON_STANDARD_THREAD_FILENAME" $thread.path "Thread filename should use YYYY-MM-DD-HHMMSS-<short-task>.md; legacy YYYY-MM-DD-HHMM- names are still accepted."
         }
 
         foreach ($requiredMetadata in @("thread", "created", "updated", "status", "scope")) {
@@ -451,11 +481,27 @@ function Test-MemoryHealth {
         if ($workstream.event_count -gt 0 -and -not (Test-Path -LiteralPath $snapshotPath)) {
             Add-DoctorIssue $issues "warning" "WORKSTREAM_SNAPSHOT_MISSING" $workstream.path "Workstream has events but no snapshot.md."
         }
-        if ((Test-Path -LiteralPath $snapshotPath) -and (Test-Path -LiteralPath $eventsRoot)) {
+        $eventFiles = @()
+        $latestEventTimestamp = ""
+        if (Test-Path -LiteralPath $eventsRoot) {
+            $eventFiles = @(Get-ChildItem -LiteralPath $eventsRoot -File -Filter "*.md" | Sort-Object Name)
+        }
+        foreach ($eventFile in $eventFiles) {
+            $eventTimestamp = Get-EventTimestampFromPath $eventFile.FullName
+            if ([string]::IsNullOrWhiteSpace($eventTimestamp)) {
+                Add-DoctorIssue $issues "warning" "WORKSTREAM_EVENT_FILENAME_NON_STANDARD" (ConvertTo-RelativeMemoryPath $ProjectRoot $eventFile.FullName) "Workstream event filename should start with YYYY-MM-DD-HHMMSS-; legacy YYYY-MM-DD-HHMM- names are still accepted."
+                continue
+            }
+            if ([string]::IsNullOrWhiteSpace($latestEventTimestamp) -or $eventTimestamp -gt $latestEventTimestamp) {
+                $latestEventTimestamp = $eventTimestamp
+            }
+        }
+        if (Test-Path -LiteralPath $snapshotPath) {
             $snapshotMetadata = Read-FrontMatter $snapshotPath
             $snapshotTimestamp = ConvertTo-MemoryTimestamp (Get-MetadataValue $snapshotMetadata "updated")
-            $latestEventTimestamp = Get-EventTimestampFromPath $workstream.latest_event
-            if (-not [string]::IsNullOrWhiteSpace($latestEventTimestamp) -and -not [string]::IsNullOrWhiteSpace($snapshotTimestamp) -and $latestEventTimestamp -gt $snapshotTimestamp) {
+            if ($eventFiles.Count -gt 0 -and [string]::IsNullOrWhiteSpace($snapshotTimestamp)) {
+                Add-DoctorIssue $issues "warning" "WORKSTREAM_SNAPSHOT_METADATA_MISSING" $workstream.path "snapshot.md has events but no usable updated timestamp."
+            } elseif (-not [string]::IsNullOrWhiteSpace($latestEventTimestamp) -and $latestEventTimestamp -gt $snapshotTimestamp) {
                 Add-DoctorIssue $issues "warning" "WORKSTREAM_SNAPSHOT_STALE" $workstream.path "snapshot.md is older than the latest workstream event."
             }
         }

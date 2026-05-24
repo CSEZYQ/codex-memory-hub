@@ -301,7 +301,7 @@ If legacy `docs/wiki/` memory exists, migrate it into `.codex-memory/` automatic
 
 When the Codex Memory Hub skill is available, use its bundled `memory_tools.ps1` or `memory_tools.sh` for deterministic maintenance:
 
-- `doctor` checks structure, broken `continues_from` links, missing or orphaned workstreams, stale workstream snapshots, Git privacy defaults, and possible secrets.
+- `doctor` checks structure, broken `continues_from` links, missing or orphaned workstreams, invalid workstream snapshots/events, Git privacy defaults, and possible secrets.
 - `index` refreshes `.codex-memory/system/thread-index.json` and `.codex-memory/system/workstream-index.json`.
 
 If there is no thread memory file, create a new one. If no existing memory clearly matches the task, create a new thread memory file and, when useful, a new workstream.

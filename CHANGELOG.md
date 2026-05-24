@@ -1,5 +1,15 @@
 # 更新记录
 
+## 1.4.6 - 2026-05-24
+
+- 增强 `doctor` 的 workstream snapshot 检查：有事件时如果 `snapshot.md` 缺少可解析的 `updated`，会明确报警。
+- 增加 workstream event 文件名规范检查：事件文件名无法解析为 `YYYY-MM-DD-HHMMSS-...` 时会报警，即使 `snapshot.md` 本身缺失也会检查，避免 snapshot 过期判断被非标准文件名绕过。
+- 为旧版本保留分钟级文件名兼容：`YYYY-MM-DD-HHMM-...` 会按 `00` 秒归一化处理，不会要求升级用户手动重命名旧记忆。
+- 修复 shell `doctor` 对 ISO 时间戳的兼容性：`snapshot.updated` 使用 `2026-05-24T13:10:00Z` 这类写法时不再误报缺少时间。
+- 统一 `latest_event` 选择逻辑：优先选择可解析时间戳最新的事件文件，全部不规范时才回退到文件名字母序。
+- 修复 shell `workstream-index.json` 在缺少 `workstream.md` 时没有回退到目录 id 的问题，和 PowerShell 索引保持一致。
+- 增加 PowerShell 与 shell 回归测试覆盖 snapshot `updated` 缺失、非标准事件文件名和缺失 `workstream.md` 的索引回退。
+
 ## 1.4.5 - 2026-05-24
 
 - 修复 shell `memory_tools.sh` 的 macOS/POSIX 兼容性：移除 GNU-only `find -mindepth/-maxdepth` 用法，改为可移植的直接子项枚举。

@@ -110,7 +110,8 @@ Use `doctor` when memory looks inconsistent, after legacy migration, before shar
 - Missing or inconsistent `workstream.md` metadata.
 - Active workstreams that have no thread references.
 - Multiple active threads continuing from the same predecessor.
-- Workstream snapshots that are missing or stale.
+- Workstream snapshots that are missing, stale, or missing a usable `updated` timestamp.
+- Workstream event filenames that cannot be timestamped.
 - Possible secret-like strings in memory files.
 
 Use `index` to refresh:

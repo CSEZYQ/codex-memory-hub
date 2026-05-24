@@ -301,6 +301,8 @@ This body text mentions workstream: orphan-workstream but frontmatter does not r
     New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/missing-file") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/mismatch/events") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/stale-stream/events") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/snapshot-no-updated/events") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/nonstandard-event/events") -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/threads/2026-05-24-121000-missing-workstream-file.md") -Encoding UTF8 -Value @"
 ---
 thread: missing-workstream-file
@@ -381,6 +383,45 @@ status: active
     Set-Content -LiteralPath $staleEventPath -Encoding UTF8 -Value "later event"
     (Get-Item -LiteralPath $staleSnapshotPath).LastWriteTime = Get-Date "2026-05-24 14:00"
     (Get-Item -LiteralPath $staleEventPath).LastWriteTime = Get-Date "2026-05-24 11:00"
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/snapshot-no-updated/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: snapshot-no-updated
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Snapshot No Updated
+"@
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/snapshot-no-updated/snapshot.md") -Encoding UTF8 -Value @"
+---
+workstream: snapshot-no-updated
+status: active
+---
+
+# Snapshot Without Updated
+"@
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/snapshot-no-updated/events/2026-05-24-131000-later-event.md") -Encoding UTF8 -Value "later event"
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/nonstandard-event/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: nonstandard-event
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Nonstandard Event
+"@
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/nonstandard-event/snapshot.md") -Encoding UTF8 -Value @"
+---
+workstream: nonstandard-event
+updated: 2026-05-24 12:00
+status: active
+---
+
+# Snapshot
+"@
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/nonstandard-event/events/later-event.md") -Encoding UTF8 -Value "event without sortable timestamp"
     $brokenDoctorOutput = Invoke-MemoryToolsPowerShell $brokenProject "doctor"
     Assert-True ($brokenDoctorOutput -match "Threads: 4") "doctor should count direct thread files correctly"
     Assert-True ($brokenDoctorOutput -match "BROKEN_CONTINUES_FROM") "doctor should warn about missing continues_from target"
@@ -389,7 +430,124 @@ status: active
     Assert-True ($brokenDoctorOutput -match "WORKSTREAM_FILE_MISSING") "doctor should warn about workstream directories missing workstream.md"
     Assert-True ($brokenDoctorOutput -match "WORKSTREAM_ID_MISMATCH") "doctor should warn when workstream frontmatter id differs from the directory id"
     Assert-True ($brokenDoctorOutput -match "WORKSTREAM_SNAPSHOT_STALE") "doctor should compare snapshot freshness by event timestamp, not filesystem mtime"
+    Assert-True ($brokenDoctorOutput -match "WORKSTREAM_SNAPSHOT_METADATA_MISSING") "doctor should warn when snapshot.md has events but no usable updated timestamp"
+    Assert-True ($brokenDoctorOutput -match "WORKSTREAM_EVENT_FILENAME_NON_STANDARD") "doctor should warn when workstream event filenames cannot be timestamped"
     Assert-True ($brokenDoctorOutput -match "POSSIBLE_SECRET") "doctor should warn about common hosted-service token patterns"
+    Invoke-MemoryToolsPowerShell $brokenProject "index" | Out-Null
+    $brokenWorkstreamIndex = Get-Content -Raw -LiteralPath (Join-Path $brokenProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json
+    $missingWorkstreamRecord = @($brokenWorkstreamIndex.workstreams | Where-Object { $_.id -eq "missing-file" })[0]
+    Assert-True ($missingWorkstreamRecord.workstream -eq "missing-file") "PowerShell workstream index should fall back to directory id when workstream.md is missing"
+
+    $legacyFilenameProject = Join-Path $TempRoot "legacy-filenames"
+    New-Item -ItemType Directory -Path $legacyFilenameProject | Out-Null
+    Invoke-InitPowerShell $legacyFilenameProject
+    New-Item -ItemType Directory -Path (Join-Path $legacyFilenameProject ".codex-memory/workstreams/legacy-minute/events") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $legacyFilenameProject ".codex-memory/threads/2026-05-24-1240-legacy-minute.md") -Encoding UTF8 -Value @"
+---
+thread: legacy-minute
+created: 2026-05-24 12:40
+updated: 2026-05-24 12:40
+status: active
+scope: Legacy minute-precision filename.
+workstream: legacy-minute
+---
+
+# Legacy Minute Thread
+"@
+    Set-Content -LiteralPath (Join-Path $legacyFilenameProject ".codex-memory/workstreams/legacy-minute/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: legacy-minute
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Legacy Minute Workstream
+"@
+    Set-Content -LiteralPath (Join-Path $legacyFilenameProject ".codex-memory/workstreams/legacy-minute/snapshot.md") -Encoding UTF8 -Value @"
+---
+workstream: legacy-minute
+updated: 2026-05-24 12:41
+status: active
+---
+
+# Snapshot
+"@
+    Set-Content -LiteralPath (Join-Path $legacyFilenameProject ".codex-memory/workstreams/legacy-minute/events/2026-05-24-1240-legacy-minute-event.md") -Encoding UTF8 -Value "legacy event"
+    $legacyFilenameDoctorOutput = Invoke-MemoryToolsPowerShell $legacyFilenameProject "doctor"
+    Assert-True ($legacyFilenameDoctorOutput -notmatch "NON_STANDARD_THREAD_FILENAME") "PowerShell doctor should accept legacy minute-precision thread filenames"
+    Assert-True ($legacyFilenameDoctorOutput -notmatch "WORKSTREAM_EVENT_FILENAME_NON_STANDARD") "PowerShell doctor should accept legacy minute-precision event filenames"
+
+    $missingSnapshotEventProject = Join-Path $TempRoot "missing-snapshot-event"
+    New-Item -ItemType Directory -Path $missingSnapshotEventProject | Out-Null
+    Invoke-InitPowerShell $missingSnapshotEventProject
+    New-Item -ItemType Directory -Path (Join-Path $missingSnapshotEventProject ".codex-memory/workstreams/missing-snapshot/events") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $missingSnapshotEventProject ".codex-memory/threads/2026-05-24-125500-missing-snapshot.md") -Encoding UTF8 -Value @"
+---
+thread: missing-snapshot
+created: 2026-05-24 12:55
+updated: 2026-05-24 12:55
+status: active
+scope: Missing snapshot but invalid event filename.
+workstream: missing-snapshot
+---
+
+# Missing Snapshot
+"@
+    Set-Content -LiteralPath (Join-Path $missingSnapshotEventProject ".codex-memory/workstreams/missing-snapshot/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: missing-snapshot
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Missing Snapshot Workstream
+"@
+    Set-Content -LiteralPath (Join-Path $missingSnapshotEventProject ".codex-memory/workstreams/missing-snapshot/events/later-event.md") -Encoding UTF8 -Value "event without timestamp"
+    $missingSnapshotEventDoctorOutput = Invoke-MemoryToolsPowerShell $missingSnapshotEventProject "doctor"
+    Assert-True ($missingSnapshotEventDoctorOutput -match "WORKSTREAM_SNAPSHOT_MISSING") "PowerShell doctor should warn when events exist but snapshot.md is missing"
+    Assert-True ($missingSnapshotEventDoctorOutput -match "WORKSTREAM_EVENT_FILENAME_NON_STANDARD") "PowerShell doctor should still check event filenames when snapshot.md is missing"
+
+    $isoTimestampProject = Join-Path $TempRoot "iso-timestamp"
+    New-Item -ItemType Directory -Path $isoTimestampProject | Out-Null
+    Invoke-InitPowerShell $isoTimestampProject
+    New-Item -ItemType Directory -Path (Join-Path $isoTimestampProject ".codex-memory/workstreams/iso-stream/events") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $isoTimestampProject ".codex-memory/threads/2026-05-24-130000-iso.md") -Encoding UTF8 -Value @"
+---
+thread: iso
+created: 2026-05-24 13:00
+updated: 2026-05-24 13:00
+status: active
+scope: ISO timestamp snapshot.
+workstream: iso-stream
+---
+
+# ISO Timestamp
+"@
+    Set-Content -LiteralPath (Join-Path $isoTimestampProject ".codex-memory/workstreams/iso-stream/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: iso-stream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# ISO Stream
+"@
+    Set-Content -LiteralPath (Join-Path $isoTimestampProject ".codex-memory/workstreams/iso-stream/snapshot.md") -Encoding UTF8 -Value @"
+---
+workstream: iso-stream
+updated: 2026-05-24T13:10:00Z
+status: active
+---
+
+# Snapshot
+"@
+    Set-Content -LiteralPath (Join-Path $isoTimestampProject ".codex-memory/workstreams/iso-stream/events/2026-05-24-130000-iso-event.md") -Encoding UTF8 -Value "iso event"
+    $isoTimestampDoctorOutput = Invoke-MemoryToolsPowerShell $isoTimestampProject "doctor"
+    Assert-True ($isoTimestampDoctorOutput -notmatch "WORKSTREAM_SNAPSHOT_METADATA_MISSING") "PowerShell doctor should parse ISO snapshot timestamps with Z suffix"
+    Assert-True ($isoTimestampDoctorOutput -notmatch "WORKSTREAM_SNAPSHOT_STALE") "PowerShell doctor should not mark a newer ISO snapshot stale"
 
     $forkProject = Join-Path $TempRoot "fork"
     New-Item -ItemType Directory -Path $forkProject | Out-Null
@@ -619,6 +777,8 @@ mkdir -p "$tmp/workstream-integrity/.codex-memory/threads" \
   "$tmp/workstream-integrity/.codex-memory/workstreams/missing-file" \
   "$tmp/workstream-integrity/.codex-memory/workstreams/mismatch/events" \
   "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/events" \
+  "$tmp/workstream-integrity/.codex-memory/workstreams/snapshot-no-updated/events" \
+  "$tmp/workstream-integrity/.codex-memory/workstreams/nonstandard-event/events" \
   "$tmp/workstream-integrity/.codex-memory/archive" \
   "$tmp/workstream-integrity/.codex-memory/system"
 printf '%s\n' "# Index" > "$tmp/workstream-integrity/.codex-memory/index.md"
@@ -679,10 +839,43 @@ EOF2
 printf '%s\n' "later event" > "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/events/2026-05-24-130000-later-event.md"
 touch -t 202605241400 "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/snapshot.md"
 touch -t 202605241100 "$tmp/workstream-integrity/.codex-memory/workstreams/stale-stream/events/2026-05-24-130000-later-event.md"
+cat > "$tmp/workstream-integrity/.codex-memory/workstreams/snapshot-no-updated/workstream.md" <<'EOF2'
+---
+workstream: snapshot-no-updated
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+EOF2
+cat > "$tmp/workstream-integrity/.codex-memory/workstreams/snapshot-no-updated/snapshot.md" <<'EOF2'
+---
+workstream: snapshot-no-updated
+status: active
+---
+EOF2
+printf '%s\n' "later event" > "$tmp/workstream-integrity/.codex-memory/workstreams/snapshot-no-updated/events/2026-05-24-131000-later-event.md"
+cat > "$tmp/workstream-integrity/.codex-memory/workstreams/nonstandard-event/workstream.md" <<'EOF2'
+---
+workstream: nonstandard-event
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+EOF2
+cat > "$tmp/workstream-integrity/.codex-memory/workstreams/nonstandard-event/snapshot.md" <<'EOF2'
+---
+workstream: nonstandard-event
+updated: 2026-05-24 12:00
+status: active
+---
+EOF2
+printf '%s\n' "event without sortable timestamp" > "$tmp/workstream-integrity/.codex-memory/workstreams/nonstandard-event/events/later-event.md"
 sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/workstream-integrity" doctor > "$tmp/workstream-integrity-doctor.txt"
 grep -q "WORKSTREAM_FILE_MISSING" "$tmp/workstream-integrity-doctor.txt"
 grep -q "WORKSTREAM_ID_MISMATCH" "$tmp/workstream-integrity-doctor.txt"
 grep -q "WORKSTREAM_SNAPSHOT_STALE" "$tmp/workstream-integrity-doctor.txt"
+grep -q "WORKSTREAM_SNAPSHOT_METADATA_MISSING" "$tmp/workstream-integrity-doctor.txt"
+grep -q "WORKSTREAM_EVENT_FILENAME_NON_STANDARD" "$tmp/workstream-integrity-doctor.txt"
 
 sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/workstream-integrity" index >/dev/null
 if grep -q '"project_root"' "$tmp/workstream-integrity/.codex-memory/system/thread-index.json"; then
@@ -691,6 +884,123 @@ if grep -q '"project_root"' "$tmp/workstream-integrity/.codex-memory/system/thre
 fi
 if grep -q '"project_root"' "$tmp/workstream-integrity/.codex-memory/system/workstream-index.json"; then
   echo "shell workstream index leaked project_root" >&2
+  exit 1
+fi
+if ! grep -A3 '"id": "missing-file"' "$tmp/workstream-integrity/.codex-memory/system/workstream-index.json" | grep -q '"workstream": "missing-file"'; then
+  echo "shell workstream index did not fall back to directory id" >&2
+  exit 1
+fi
+
+mkdir -p "$tmp/legacy-filenames/.codex-memory/threads" \
+  "$tmp/legacy-filenames/.codex-memory/workstreams/legacy-minute/events" \
+  "$tmp/legacy-filenames/.codex-memory/archive" \
+  "$tmp/legacy-filenames/.codex-memory/system"
+printf '%s\n' "# Index" > "$tmp/legacy-filenames/.codex-memory/index.md"
+printf '%s\n' "# Project" > "$tmp/legacy-filenames/.codex-memory/project.md"
+cat > "$tmp/legacy-filenames/.codex-memory/threads/2026-05-24-1240-legacy-minute.md" <<'EOF2'
+---
+thread: legacy-minute
+created: 2026-05-24 12:40
+updated: 2026-05-24 12:40
+status: active
+scope: legacy minute filename
+workstream: legacy-minute
+---
+EOF2
+cat > "$tmp/legacy-filenames/.codex-memory/workstreams/legacy-minute/workstream.md" <<'EOF2'
+---
+workstream: legacy-minute
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+EOF2
+cat > "$tmp/legacy-filenames/.codex-memory/workstreams/legacy-minute/snapshot.md" <<'EOF2'
+---
+workstream: legacy-minute
+updated: 2026-05-24 12:41
+status: active
+---
+EOF2
+printf '%s\n' "legacy event" > "$tmp/legacy-filenames/.codex-memory/workstreams/legacy-minute/events/2026-05-24-1240-legacy-minute-event.md"
+sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/legacy-filenames" doctor > "$tmp/legacy-filenames-doctor.txt"
+if grep -q "NON_STANDARD_THREAD_FILENAME" "$tmp/legacy-filenames-doctor.txt"; then
+  echo "shell doctor rejected legacy minute thread filename" >&2
+  exit 1
+fi
+if grep -q "WORKSTREAM_EVENT_FILENAME_NON_STANDARD" "$tmp/legacy-filenames-doctor.txt"; then
+  echo "shell doctor rejected legacy minute event filename" >&2
+  exit 1
+fi
+
+mkdir -p "$tmp/missing-snapshot-event/.codex-memory/threads" \
+  "$tmp/missing-snapshot-event/.codex-memory/workstreams/missing-snapshot/events" \
+  "$tmp/missing-snapshot-event/.codex-memory/archive" \
+  "$tmp/missing-snapshot-event/.codex-memory/system"
+printf '%s\n' "# Index" > "$tmp/missing-snapshot-event/.codex-memory/index.md"
+printf '%s\n' "# Project" > "$tmp/missing-snapshot-event/.codex-memory/project.md"
+cat > "$tmp/missing-snapshot-event/.codex-memory/threads/2026-05-24-125500-missing-snapshot.md" <<'EOF2'
+---
+thread: missing-snapshot
+created: 2026-05-24 12:55
+updated: 2026-05-24 12:55
+status: active
+scope: missing snapshot invalid event
+workstream: missing-snapshot
+---
+EOF2
+cat > "$tmp/missing-snapshot-event/.codex-memory/workstreams/missing-snapshot/workstream.md" <<'EOF2'
+---
+workstream: missing-snapshot
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+EOF2
+printf '%s\n' "event without timestamp" > "$tmp/missing-snapshot-event/.codex-memory/workstreams/missing-snapshot/events/later-event.md"
+sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/missing-snapshot-event" doctor > "$tmp/missing-snapshot-event-doctor.txt"
+grep -q "WORKSTREAM_SNAPSHOT_MISSING" "$tmp/missing-snapshot-event-doctor.txt"
+grep -q "WORKSTREAM_EVENT_FILENAME_NON_STANDARD" "$tmp/missing-snapshot-event-doctor.txt"
+
+mkdir -p "$tmp/iso-timestamp/.codex-memory/threads" \
+  "$tmp/iso-timestamp/.codex-memory/workstreams/iso-stream/events" \
+  "$tmp/iso-timestamp/.codex-memory/archive" \
+  "$tmp/iso-timestamp/.codex-memory/system"
+printf '%s\n' "# Index" > "$tmp/iso-timestamp/.codex-memory/index.md"
+printf '%s\n' "# Project" > "$tmp/iso-timestamp/.codex-memory/project.md"
+cat > "$tmp/iso-timestamp/.codex-memory/threads/2026-05-24-130000-iso.md" <<'EOF2'
+---
+thread: iso
+created: 2026-05-24 13:00
+updated: 2026-05-24 13:00
+status: active
+scope: iso timestamp
+workstream: iso-stream
+---
+EOF2
+cat > "$tmp/iso-timestamp/.codex-memory/workstreams/iso-stream/workstream.md" <<'EOF2'
+---
+workstream: iso-stream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+EOF2
+cat > "$tmp/iso-timestamp/.codex-memory/workstreams/iso-stream/snapshot.md" <<'EOF2'
+---
+workstream: iso-stream
+updated: 2026-05-24T13:10:00Z
+status: active
+---
+EOF2
+printf '%s\n' "iso event" > "$tmp/iso-timestamp/.codex-memory/workstreams/iso-stream/events/2026-05-24-130000-iso-event.md"
+sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/iso-timestamp" doctor > "$tmp/iso-timestamp-doctor.txt"
+if grep -q "WORKSTREAM_SNAPSHOT_METADATA_MISSING" "$tmp/iso-timestamp-doctor.txt"; then
+  echo "shell doctor did not parse ISO snapshot timestamp" >&2
+  exit 1
+fi
+if grep -q "WORKSTREAM_SNAPSHOT_STALE" "$tmp/iso-timestamp-doctor.txt"; then
+  echo "shell doctor marked newer ISO snapshot as stale" >&2
   exit 1
 fi
 '@ -replace "`r", ""

@@ -246,9 +246,26 @@ active_threads_json_for_workstream() {
 
 latest_event_path() {
   events_dir=$1
-  latest=$(list_direct_files "$events_dir" "*.md" | tail -n 1)
-  if [ -n "$latest" ]; then
-    relative_path "$latest"
+  latest_timestamp=""
+  latest_path=""
+  fallback_path=""
+  event_list=$(mktemp)
+  list_direct_files "$events_dir" "*.md" > "$event_list"
+  while IFS= read -r event_file; do
+    [ -n "$event_file" ] || continue
+    fallback_path=$event_file
+    event_timestamp=$(event_timestamp_from_path "$event_file")
+    if [ -n "$event_timestamp" ] && { [ -z "$latest_timestamp" ] || [ "$event_timestamp" \> "$latest_timestamp" ]; }; then
+      latest_timestamp=$event_timestamp
+      latest_path=$event_file
+    fi
+  done < "$event_list"
+  rm -f "$event_list"
+
+  if [ -n "$latest_path" ]; then
+    relative_path "$latest_path"
+  elif [ -n "$fallback_path" ]; then
+    relative_path "$fallback_path"
   else
     printf '\n'
   fi
@@ -268,10 +285,13 @@ normalize_memory_timestamp() {
     time_part=${value#* }
     time_part=${time_part%% *}
     time_part=$(printf '%s' "$time_part" | tr -d ':')
+    time_part=$(printf '%s' "$time_part" | sed 's/[^0-9].*$//')
     if [ -z "$time_part" ]; then
       time_part="000000"
     elif [ "${#time_part}" -eq 4 ]; then
       time_part="${time_part}00"
+    elif [ "${#time_part}" -gt 6 ]; then
+      time_part=$(printf '%s' "$time_part" | cut -c 1-6)
     fi
   fi
 
@@ -290,6 +310,9 @@ event_timestamp_from_path() {
   case "$name" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
       printf '%s\n' "$(printf '%s' "$name" | cut -c 1-17)"
+      ;;
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]-*)
+      printf '%s00\n' "$(printf '%s' "$name" | cut -c 1-15)"
       ;;
     *)
       printf '\n'
@@ -342,7 +365,8 @@ run_doctor() {
       thread_name=$(basename "$thread_file")
       case "$thread_name" in
         [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*.md) ;;
-        *) add_issue warning NON_STANDARD_THREAD_FILENAME "$thread_path" "Thread filename should use YYYY-MM-DD-HHMMSS-<short-task>.md." ;;
+        [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]-*.md) ;;
+        *) add_issue warning NON_STANDARD_THREAD_FILENAME "$thread_path" "Thread filename should use YYYY-MM-DD-HHMMSS-<short-task>.md; legacy YYYY-MM-DD-HHMM- names are still accepted." ;;
       esac
 
       for key in thread created updated status scope; do
@@ -443,11 +467,26 @@ run_doctor() {
       if [ "$event_count" -gt 0 ] && [ ! -f "$snapshot_file" ]; then
         add_issue warning WORKSTREAM_SNAPSHOT_MISSING "$workstream_path" "Workstream has events but no snapshot.md."
       fi
-      if [ -f "$snapshot_file" ] && [ -d "$events_dir" ]; then
-        latest_event=$(latest_event_path "$events_dir")
-        latest_event_timestamp=$(event_timestamp_from_path "$latest_event")
+      latest_event_timestamp=""
+      if [ -d "$events_dir" ]; then
+        event_list=$(mktemp)
+        list_direct_files "$events_dir" "*.md" > "$event_list"
+        while IFS= read -r event_file; do
+          [ -n "$event_file" ] || continue
+          event_timestamp=$(event_timestamp_from_path "$event_file")
+          if [ -z "$event_timestamp" ]; then
+            add_issue warning WORKSTREAM_EVENT_FILENAME_NON_STANDARD "$(relative_path "$event_file")" "Workstream event filename should start with YYYY-MM-DD-HHMMSS-; legacy YYYY-MM-DD-HHMM- names are still accepted."
+          elif [ -z "$latest_event_timestamp" ] || [ "$event_timestamp" \> "$latest_event_timestamp" ]; then
+            latest_event_timestamp=$event_timestamp
+          fi
+        done < "$event_list"
+        rm -f "$event_list"
+      fi
+      if [ -f "$snapshot_file" ]; then
         snapshot_timestamp=$(normalize_memory_timestamp "$(frontmatter_value "$snapshot_file" updated)")
-        if [ -n "$latest_event_timestamp" ] && [ -n "$snapshot_timestamp" ] && [ "$latest_event_timestamp" \> "$snapshot_timestamp" ]; then
+        if [ "$event_count" -gt 0 ] && [ -z "$snapshot_timestamp" ]; then
+          add_issue warning WORKSTREAM_SNAPSHOT_METADATA_MISSING "$workstream_path" "snapshot.md has events but no usable updated timestamp."
+        elif [ -n "$latest_event_timestamp" ] && [ "$latest_event_timestamp" \> "$snapshot_timestamp" ]; then
           add_issue warning WORKSTREAM_SNAPSHOT_STALE "$workstream_path" "snapshot.md is older than the latest workstream event."
         fi
       fi
@@ -609,15 +648,20 @@ write_workstream_index() {
         snapshot_file="$workstream_dir/snapshot.md"
         events_dir="$workstream_dir/events"
         event_count=$(count_files "$events_dir" "*.md")
+        workstream_id=$(basename "$workstream_dir")
+        workstream_name=$(frontmatter_value "$workstream_file" workstream)
+        if [ -z "$workstream_name" ]; then
+          workstream_name=$workstream_id
+        fi
         if [ -f "$snapshot_file" ]; then
           snapshot_exists=true
         else
           snapshot_exists=false
         fi
         printf '    {\n'
-        printf '      "id": "%s",\n' "$(json_escape "$(basename "$workstream_dir")")"
+        printf '      "id": "%s",\n' "$(json_escape "$workstream_id")"
         printf '      "path": "%s",\n' "$(json_escape "$(relative_path "$workstream_dir")")"
-        printf '      "workstream": "%s",\n' "$(json_escape "$(frontmatter_value "$workstream_file" workstream)")"
+        printf '      "workstream": "%s",\n' "$(json_escape "$workstream_name")"
         printf '      "created": "%s",\n' "$(json_escape "$(frontmatter_value "$workstream_file" created)")"
         printf '      "updated": "%s",\n' "$(json_escape "$(frontmatter_value "$workstream_file" updated)")"
         printf '      "status": "%s",\n' "$(json_escape "$(frontmatter_value "$workstream_file" status)")"
@@ -625,7 +669,7 @@ write_workstream_index() {
         printf '      "latest_event": "%s",\n' "$(json_escape "$(latest_event_path "$events_dir")")"
         printf '      "snapshot_exists": %s,\n' "$snapshot_exists"
         printf '      "active_threads": ['
-        active_threads_json_for_workstream "$(basename "$workstream_dir")" "$active_threads_file"
+        active_threads_json_for_workstream "$workstream_id" "$active_threads_file"
         printf '],\n'
         printf '      "modified_at": "%s"\n' "$(json_escape "$(file_modified_at "$workstream_dir")")"
         printf '    }'

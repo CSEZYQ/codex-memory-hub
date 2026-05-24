@@ -160,7 +160,8 @@ thread 指向的 workstream 是否存在
 workstream.md 是否缺失或和目录不一致
 active workstream 是否没有任何 thread 引用
 多个 active 线程是否从同一个旧线程分叉
-workstream snapshot 是否过期
+workstream snapshot 是否缺失、过期或缺少可用 updated
+workstream event 文件名是否不符合时间戳规范
 .codex-memory/ 是否已被 Git 忽略
 记忆文件里是否疑似写入密钥或 token
 ```
