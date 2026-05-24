@@ -38,22 +38,36 @@ ARCHIVE_ROOT="$MEMORY_ROOT/archive"
 SYSTEM_ROOT="$MEMORY_ROOT/system"
 
 relative_path() {
-  case "$1" in
-    "$PROJECT_ROOT"/*)
-      printf '%s\n' "${1#"$PROJECT_ROOT"/}"
-      ;;
-    *)
-      printf '%s\n' "$1"
-      ;;
-  esac
-}
-
-trim_value() {
-  printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//; s/^'\''//; s/'\''$//'
+  target=$1
+  prefix=$PROJECT_ROOT/
+  relative=${target#"$prefix"}
+  if [ "$relative" != "$target" ]; then
+    printf '%s\n' "$relative"
+  else
+    printf '%s\n' "$target"
+  fi
 }
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+  printf '%s' "$1" | awk '
+    BEGIN {
+      first = 1
+      tab = sprintf("%c", 9)
+      cr = sprintf("%c", 13)
+    }
+    {
+      if (!first) {
+        printf "\\n"
+      }
+      first = 0
+      line = $0
+      gsub(/\\/, "\\\\", line)
+      gsub(/"/, "\\\"", line)
+      gsub(tab, "\\t", line)
+      gsub(cr, "\\r", line)
+      printf "%s", line
+    }
+  '
 }
 
 frontmatter_value() {
@@ -64,8 +78,27 @@ frontmatter_value() {
     return
   fi
   awk -v key="$key" '
+    NR == 1 { sub(/^\357\273\277/, "") }
     NR == 1 && $0 == "---" { fm = 1; next }
     fm && $0 == "---" { exit }
+    block {
+      if ($0 ~ /^[A-Za-z0-9_-]+:[ \t]*/) {
+        print value
+        block = 0
+        printed = 1
+        exit
+      }
+      line = $0
+      sub(/^[ \t]+/, "", line)
+      if (value == "") {
+        value = line
+      } else if (folded) {
+        value = value " " line
+      } else {
+        value = value "\n" line
+      }
+      next
+    }
     fm {
       prefix = key ":"
       if (index($0, prefix) == 1) {
@@ -73,8 +106,19 @@ frontmatter_value() {
         gsub(/^[ \t]+|[ \t]+$/, "", value)
         gsub(/^"|"$/, "", value)
         gsub(/^'\''|'\''$/, "", value)
+        if (value == "|" || value == ">") {
+          block = 1
+          folded = (value == ">")
+          value = ""
+          next
+        }
         print value
         exit
+      }
+    }
+    END {
+      if (block && !printed) {
+        print value
       }
     }
   ' "$file"
@@ -87,6 +131,7 @@ frontmatter_list() {
     return
   fi
   awk -v key="$key" '
+    NR == 1 { sub(/^\357\273\277/, "") }
     NR == 1 && $0 == "---" { fm = 1; next }
     fm && $0 == "---" { exit }
     fm {
@@ -116,6 +161,28 @@ count_files() {
   find "$root" -type f -name "$pattern" 2>/dev/null | wc -l | tr -d ' '
 }
 
+file_size_bytes() {
+  if [ -f "$1" ]; then
+    wc -c < "$1" | tr -d ' '
+  else
+    printf '0\n'
+  fi
+}
+
+file_modified_at() {
+  if [ ! -e "$1" ]; then
+    printf '\n'
+    return
+  fi
+  if date -r "$1" "+%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
+    date -r "$1" "+%Y-%m-%d %H:%M:%S"
+  elif stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$1" >/dev/null 2>&1; then
+    stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$1"
+  else
+    printf '\n'
+  fi
+}
+
 add_issue() {
   severity=$1
   code=$2
@@ -126,18 +193,50 @@ add_issue() {
 
 workstream_referenced_by_thread() {
   workstream_id=$1
-  if [ ! -d "$THREADS_ROOT" ]; then
+  if [ -z "${THREAD_WORKSTREAMS_FILE:-}" ] || [ ! -f "$THREAD_WORKSTREAMS_FILE" ]; then
     return 1
   fi
-  if grep -R -F -q "workstream: $workstream_id" "$THREADS_ROOT" 2>/dev/null; then
-    return 0
+  awk -v id="$workstream_id" 'BEGIN { FS = sprintf("%c", 9) } $1 == id { found = 1 } END { exit found ? 0 : 1 }' "$THREAD_WORKSTREAMS_FILE"
+}
+
+active_threads_json_for_workstream() {
+  workstream_id=$1
+  active_threads_file=$2
+  first_active=1
+  if [ ! -f "$active_threads_file" ]; then
+    return
   fi
-  return 1
+  tab=$(printf '\t')
+  while IFS="$tab" read -r thread_workstream thread_path; do
+    [ -n "$thread_workstream" ] || continue
+    if [ "$thread_workstream" = "$workstream_id" ]; then
+      if [ "$first_active" -eq 0 ]; then
+        printf ', '
+      fi
+      first_active=0
+      printf '"%s"' "$(json_escape "$thread_path")"
+    fi
+  done < "$active_threads_file"
+}
+
+latest_event_path() {
+  events_dir=$1
+  if [ ! -d "$events_dir" ]; then
+    printf '\n'
+    return
+  fi
+  latest=$(find "$events_dir" -type f -name "*.md" 2>/dev/null | sort | tail -n 1)
+  if [ -n "$latest" ]; then
+    relative_path "$latest"
+  else
+    printf '\n'
+  fi
 }
 
 run_doctor() {
   ISSUES_FILE=$(mktemp)
-  trap 'rm -f "$ISSUES_FILE"' EXIT
+  THREAD_WORKSTREAMS_FILE=$(mktemp)
+  trap 'rm -f "$ISSUES_FILE" "$THREAD_WORKSTREAMS_FILE"' EXIT
 
   thread_count=$(count_files "$THREADS_ROOT" "*.md")
   workstream_count=0
@@ -195,16 +294,22 @@ run_doctor() {
       fi
 
       workstream=$(frontmatter_value "$thread_file" workstream)
+      if [ -n "$workstream" ]; then
+        printf '%s%s%s\n' "$workstream" "$(printf '\t')" "$thread_path" >> "$THREAD_WORKSTREAMS_FILE"
+      fi
       if [ -n "$workstream" ] && [ ! -d "$WORKSTREAMS_ROOT/$workstream" ]; then
         add_issue warning BROKEN_WORKSTREAM_REFERENCE "$thread_path" "Thread references a missing workstream: $workstream"
       fi
 
-      refs=$(frontmatter_list "$thread_file" continues_from || true)
-      for ref in $refs; do
+      refs_file=$(mktemp)
+      frontmatter_list "$thread_file" continues_from > "$refs_file" || true
+      while IFS= read -r ref; do
+        [ -n "$ref" ] || continue
         if [ ! -e "$PROJECT_ROOT/$ref" ] && [ ! -e "$(dirname "$thread_file")/$ref" ]; then
           add_issue warning BROKEN_CONTINUES_FROM "$thread_path" "continues_from target does not exist: $ref"
         fi
-      done
+      done < "$refs_file"
+      rm -f "$refs_file"
     done < "$thread_list"
     rm -f "$thread_list"
   fi
@@ -267,6 +372,11 @@ run_doctor() {
     fi
     cat "$ISSUES_FILE"
   fi
+
+  if grep -q '^\[ERROR\]' "$ISSUES_FILE"; then
+    return 1
+  fi
+  return 0
 }
 
 write_thread_index() {
@@ -274,6 +384,23 @@ write_thread_index() {
   output="$SYSTEM_ROOT/thread-index.json"
   generated_at=$(date "+%Y-%m-%d %H:%M:%S")
   thread_count=$(count_files "$THREADS_ROOT" "*.md")
+  active_count=0
+  done_count=0
+  archived_count=0
+  if [ -d "$THREADS_ROOT" ]; then
+    count_thread_list=$(mktemp)
+    find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$count_thread_list"
+    while IFS= read -r count_thread_file; do
+      [ -n "$count_thread_file" ] || continue
+      count_status=$(frontmatter_value "$count_thread_file" status)
+      case "$count_status" in
+        active) active_count=$((active_count + 1)) ;;
+        done) done_count=$((done_count + 1)) ;;
+        archived) archived_count=$((archived_count + 1)) ;;
+      esac
+    done < "$count_thread_list"
+    rm -f "$count_thread_list"
+  fi
   {
     printf '{\n'
     printf '  "schema": "codex-memory-hub.thread-index.v1",\n'
@@ -281,6 +408,9 @@ write_thread_index() {
     printf '  "project_root": "%s",\n' "$(json_escape "$PROJECT_ROOT")"
     printf '  "memory_root": ".codex-memory",\n'
     printf '  "thread_count": %s,\n' "$thread_count"
+    printf '  "active_count": %s,\n' "$active_count"
+    printf '  "done_count": %s,\n' "$done_count"
+    printf '  "archived_count": %s,\n' "$archived_count"
     printf '  "threads": [\n'
     first=1
     if [ -d "$THREADS_ROOT" ]; then
@@ -303,15 +433,20 @@ write_thread_index() {
         printf '      "workstream": "%s",\n' "$(json_escape "$(frontmatter_value "$thread_file" workstream)")"
         printf '      "continues_from": ['
         ref_first=1
-        refs=$(frontmatter_list "$thread_file" continues_from || true)
-        for ref in $refs; do
+        refs_file=$(mktemp)
+        frontmatter_list "$thread_file" continues_from > "$refs_file" || true
+        while IFS= read -r ref; do
+          [ -n "$ref" ] || continue
           if [ "$ref_first" -eq 0 ]; then
             printf ', '
           fi
           ref_first=0
           printf '"%s"' "$(json_escape "$ref")"
-        done
-        printf ']\n'
+        done < "$refs_file"
+        rm -f "$refs_file"
+        printf '],\n'
+        printf '      "size_bytes": %s,\n' "$(file_size_bytes "$thread_file")"
+        printf '      "modified_at": "%s"\n' "$(json_escape "$(file_modified_at "$thread_file")")"
         printf '    }'
       done < "$thread_list"
       rm -f "$thread_list"
@@ -328,6 +463,20 @@ write_workstream_index() {
   workstream_count=0
   if [ -d "$WORKSTREAMS_ROOT" ]; then
     workstream_count=$(find "$WORKSTREAMS_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')
+  fi
+  active_threads_file=$(mktemp)
+  if [ -d "$THREADS_ROOT" ]; then
+    thread_list_for_workstreams=$(mktemp)
+    find "$THREADS_ROOT" -type f -name "*.md" 2>/dev/null | sort > "$thread_list_for_workstreams"
+    while IFS= read -r thread_file; do
+      [ -n "$thread_file" ] || continue
+      thread_workstream=$(frontmatter_value "$thread_file" workstream)
+      thread_status=$(frontmatter_value "$thread_file" status)
+      if [ -n "$thread_workstream" ] && [ "$thread_status" = "active" ]; then
+        printf '%s\t%s\n' "$thread_workstream" "$(relative_path "$thread_file")" >> "$active_threads_file"
+      fi
+    done < "$thread_list_for_workstreams"
+    rm -f "$thread_list_for_workstreams"
   fi
   {
     printf '{\n'
@@ -348,8 +497,14 @@ write_workstream_index() {
         fi
         first=0
         workstream_file="$workstream_dir/workstream.md"
+        snapshot_file="$workstream_dir/snapshot.md"
         events_dir="$workstream_dir/events"
         event_count=$(count_files "$events_dir" "*.md")
+        if [ -f "$snapshot_file" ]; then
+          snapshot_exists=true
+        else
+          snapshot_exists=false
+        fi
         printf '    {\n'
         printf '      "id": "%s",\n' "$(json_escape "$(basename "$workstream_dir")")"
         printf '      "path": "%s",\n' "$(json_escape "$(relative_path "$workstream_dir")")"
@@ -357,7 +512,13 @@ write_workstream_index() {
         printf '      "created": "%s",\n' "$(json_escape "$(frontmatter_value "$workstream_file" created)")"
         printf '      "updated": "%s",\n' "$(json_escape "$(frontmatter_value "$workstream_file" updated)")"
         printf '      "status": "%s",\n' "$(json_escape "$(frontmatter_value "$workstream_file" status)")"
-        printf '      "event_count": %s\n' "$event_count"
+        printf '      "event_count": %s,\n' "$event_count"
+        printf '      "latest_event": "%s",\n' "$(json_escape "$(latest_event_path "$events_dir")")"
+        printf '      "snapshot_exists": %s,\n' "$snapshot_exists"
+        printf '      "active_threads": ['
+        active_threads_json_for_workstream "$(basename "$workstream_dir")" "$active_threads_file"
+        printf '],\n'
+        printf '      "modified_at": "%s"\n' "$(json_escape "$(file_modified_at "$workstream_dir")")"
         printf '    }'
       done < "$workstream_list"
       rm -f "$workstream_list"
@@ -365,6 +526,7 @@ write_workstream_index() {
     printf '\n  ]\n'
     printf '}\n'
   } > "$output"
+  rm -f "$active_threads_file"
 }
 
 run_index() {
@@ -395,9 +557,15 @@ case "$COMMAND" in
     run_index
     ;;
   all)
-    run_doctor
+    doctor_code=0
+    run_doctor || doctor_code=$?
     echo ""
-    run_index
+    index_code=0
+    run_index || index_code=$?
+    if [ "$doctor_code" -ne 0 ]; then
+      exit "$doctor_code"
+    fi
+    exit "$index_code"
     ;;
   *)
     echo "Usage: memory_tools.sh --path <project-path> [doctor|index|all]" >&2

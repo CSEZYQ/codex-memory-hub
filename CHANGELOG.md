@@ -1,5 +1,14 @@
 # 更新记录
 
+## 1.4.2 - 2026-05-24
+
+- 修复 shell 版 `memory_tools.sh` 手动生成 JSON 时对换行、引号、反斜杠和 Windows UTF-8 BOM 的处理问题。
+- 对齐 shell 和 PowerShell 生成的索引结构，补齐线程计数、文件大小、修改时间、workstream snapshot、active threads 和 latest event 字段，并减少重复扫描。
+- 修复 shell `doctor` 遇到错误仍返回成功退出码的问题。
+- 修复 shell orphan workstream 检测误读正文内容的问题，只按 thread frontmatter 的 `workstream` 字段判断。
+- 更新 README 中维护脚本的真实调用方式，并将示例线程文件名统一为秒级精度。
+- 增加回归测试，覆盖跨平台索引结构、block scalar frontmatter、JSON 转义、BOM 兼容、doctor 退出码和 shell 初始化后损坏检测。
+
 ## 1.4.1 - 2026-05-24
 
 - 修复初始化脚本生成的 `AGENTS.md` 启动顺序：先读取 `.codex-memory/system/` 索引，再按需打开 thread 和 workstream 原文。

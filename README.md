@@ -108,7 +108,7 @@ thread: continue-ppt-images
 status: active
 workstream: ppt-images
 continues_from:
-  - .codex-memory/threads/2026-05-24-0900-ppt-images.md
+  - .codex-memory/threads/2026-05-24-090000-ppt-images.md
 ```
 
 ### 2. 多线程并发做同一个交付物
@@ -142,10 +142,10 @@ workstream -> 把三条线程归到同一功能
 插件自带一个轻量维护脚本：
 
 ```text
-memory_tools.ps1 doctor
-memory_tools.ps1 index
-memory_tools.sh doctor
-memory_tools.sh index
+powershell -NoProfile -ExecutionPolicy Bypass -File <skill目录>/scripts/memory_tools.ps1 -Path <项目路径> -Command doctor
+powershell -NoProfile -ExecutionPolicy Bypass -File <skill目录>/scripts/memory_tools.ps1 -Path <项目路径> -Command index
+sh <skill目录>/scripts/memory_tools.sh --path <项目路径> doctor
+sh <skill目录>/scripts/memory_tools.sh --path <项目路径> index
 ```
 
 `doctor` 只检查，不改记忆内容。它会提示：

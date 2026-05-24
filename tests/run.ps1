@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $PsInit = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/init_project_memory.ps1"
 $PsMemoryTools = Join-Path $RepoRoot "skill/codex-memory-hub/scripts/memory_tools.ps1"
+$ReadmePath = Join-Path $RepoRoot "README.md"
 $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-memory-hub-tests-" + [guid]::NewGuid().ToString("N"))
 
 function Assert-True {
@@ -71,6 +72,13 @@ function Invoke-MemoryToolsPowerShell {
 
 try {
     New-Item -ItemType Directory -Path $TempRoot | Out-Null
+
+    $readme = Get-Content -Raw -LiteralPath $ReadmePath
+    Assert-True ($readme -match "-Command doctor") "README should show the real PowerShell doctor command"
+    Assert-True ($readme -match "-Command index") "README should show the real PowerShell index command"
+    Assert-True ($readme -notmatch "(?m)^memory_tools\.ps1 doctor$") "README should not imply that doctor is the first positional PowerShell argument"
+    Assert-True ($readme -match "2026-05-24-090000-ppt-images\.md") "README continuation example should use second-precision thread filenames"
+    Assert-True ($readme -notmatch "2026-05-24-0900-ppt-images\.md") "README should not keep minute-precision thread filename examples"
 
     $cleanProject = Join-Path $TempRoot "clean"
     New-Item -ItemType Directory -Path $cleanProject | Out-Null
@@ -157,6 +165,71 @@ thread: .codex-memory/threads/2026-05-24-110000-continue-ppt-images.md
     $doctorOutput = Invoke-MemoryToolsPowerShell $indexedProject "doctor"
     Assert-True ($doctorOutput -match "No errors found") "doctor should report no errors for indexed sample project"
 
+    $shellParityProject = Join-Path $RepoRoot ".codex-memory-hub-shell-parity"
+    if (Test-Path -LiteralPath $shellParityProject) {
+        Remove-Item -LiteralPath $shellParityProject -Recurse -Force
+    }
+    try {
+        New-Item -ItemType Directory -Path $shellParityProject | Out-Null
+        Invoke-InitPowerShell $shellParityProject
+        New-Item -ItemType Directory -Path (Join-Path $shellParityProject ".codex-memory/workstreams/audit-stream/events") -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $shellParityProject ".codex-memory/threads/2026-05-24-130000-shell-json.md") -Encoding UTF8 -Value @"
+---
+thread: shell-json
+created: 2026-05-24 13:00
+updated: 2026-05-24 13:05
+status: active
+scope: |
+  First line with "quotes"
+  Second line with \backslash
+workstream: audit-stream
+---
+
+# Shell JSON
+"@
+        Set-Content -LiteralPath (Join-Path $shellParityProject ".codex-memory/workstreams/audit-stream/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: audit-stream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Audit Stream
+"@
+        Invoke-MemoryToolsPowerShell $shellParityProject "index" | Out-Null
+        $psThreadIndex = Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/thread-index.json") | ConvertFrom-Json
+        $psWorkstreamIndex = Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json
+        Push-Location $RepoRoot
+        try {
+            bash -c "sh skill/codex-memory-hub/scripts/memory_tools.sh --path .codex-memory-hub-shell-parity index >/dev/null"
+            if ($LASTEXITCODE -ne 0) {
+                throw "shell index failed for schema parity project"
+            }
+        } finally {
+            Pop-Location
+        }
+        $shellThreadIndexRaw = Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/thread-index.json")
+        Assert-True ($shellThreadIndexRaw -match 'First line with \\"quotes\\"\\nSecond line with \\\\backslash') "shell index should escape quotes, newlines, and backslashes in JSON strings"
+        $shellThreadIndex = $shellThreadIndexRaw | ConvertFrom-Json
+        $shellWorkstreamIndex = Get-Content -Raw -LiteralPath (Join-Path $shellParityProject ".codex-memory/system/workstream-index.json") | ConvertFrom-Json
+        $expectedScope = "First line with `"quotes`"`nSecond line with \backslash"
+        Assert-True ($psThreadIndex.threads[0].scope -eq $expectedScope) "PowerShell index should parse literal block scalar scope"
+        Assert-True ($shellThreadIndex.threads[0].scope -eq $expectedScope) "shell index should parse literal block scalar scope"
+        $psThreadProps = @($psThreadIndex.threads[0].PSObject.Properties.Name | Sort-Object)
+        $shellThreadProps = @($shellThreadIndex.threads[0].PSObject.Properties.Name | Sort-Object)
+        $psWorkstreamProps = @($psWorkstreamIndex.workstreams[0].PSObject.Properties.Name | Sort-Object)
+        $shellWorkstreamProps = @($shellWorkstreamIndex.workstreams[0].PSObject.Properties.Name | Sort-Object)
+        Assert-True (($psThreadProps -join "|") -eq ($shellThreadProps -join "|")) "shell thread index schema should match PowerShell thread index schema"
+        Assert-True (($psWorkstreamProps -join "|") -eq ($shellWorkstreamProps -join "|")) "shell workstream index schema should match PowerShell workstream index schema"
+        Assert-True ($shellThreadIndex.active_count -eq $psThreadIndex.active_count) "shell thread index should include active_count"
+        Assert-True ($shellWorkstreamIndex.workstreams[0].snapshot_exists -eq $psWorkstreamIndex.workstreams[0].snapshot_exists) "shell workstream index should include snapshot_exists"
+    } finally {
+        if (Test-Path -LiteralPath $shellParityProject) {
+            Remove-Item -LiteralPath $shellParityProject -Recurse -Force
+        }
+    }
+
     $brokenProject = Join-Path $TempRoot "broken"
     New-Item -ItemType Directory -Path $brokenProject | Out-Null
     Invoke-InitPowerShell $brokenProject
@@ -175,6 +248,8 @@ continues_from:
 # Broken
 
 leaked token: ghp_1234567890abcdefghijklmnopqrstu
+
+This body text mentions workstream: orphan-workstream but frontmatter does not reference it.
 "@
     New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/orphan-workstream") -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/orphan-workstream/workstream.md") -Encoding UTF8 -Value @"
@@ -229,6 +304,13 @@ set -eu
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+mkdir -p "$tmp/no-memory"
+if sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/no-memory" doctor > "$tmp/no-memory-doctor.txt"; then
+  echo "shell doctor should exit non-zero when memory root is missing" >&2
+  exit 1
+fi
+grep -q "MEMORY_ROOT_MISSING" "$tmp/no-memory-doctor.txt"
+
 mkdir -p "$tmp/legacy/docs/wiki"
 printf '%s\n' "Overview only content" > "$tmp/legacy/docs/wiki/project-overview.md"
 printf '%s\n' "Current status content" > "$tmp/legacy/docs/wiki/current-status.md"
@@ -265,13 +347,9 @@ sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/legacy" index >/d
 test -f "$tmp/legacy/.codex-memory/system/thread-index.json"
 test -f "$tmp/legacy/.codex-memory/system/workstream-index.json"
 
-mkdir -p "$tmp/broken/.codex-memory/threads" "$tmp/broken/.codex-memory/workstreams/orphan-workstream" "$tmp/broken/.codex-memory/archive"
-cat > "$tmp/broken/.codex-memory/index.md" <<'EOF2'
-# Index
-EOF2
-cat > "$tmp/broken/.codex-memory/project.md" <<'EOF2'
-# Project
-EOF2
+mkdir -p "$tmp/broken"
+sh skill/codex-memory-hub/scripts/init_project_memory.sh --path "$tmp/broken" >/dev/null
+mkdir -p "$tmp/broken/.codex-memory/workstreams/orphan-workstream"
 cat > "$tmp/broken/.codex-memory/threads/2026-05-24-120000-broken.md" <<'EOF2'
 ---
 thread: broken
@@ -287,6 +365,8 @@ continues_from:
 # Broken
 
 leaked token: ghp_1234567890abcdefghijklmnopqrstu
+
+This body text mentions workstream: orphan-workstream but frontmatter does not reference it.
 EOF2
 cat > "$tmp/broken/.codex-memory/workstreams/orphan-workstream/workstream.md" <<'EOF2'
 ---

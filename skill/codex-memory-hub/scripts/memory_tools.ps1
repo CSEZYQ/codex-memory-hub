@@ -101,7 +101,9 @@ function Read-FrontMatter {
     }
 
     $currentListKey = $null
-    foreach ($line in ($match.Groups[1].Value -split "\r?\n")) {
+    $lines = @($match.Groups[1].Value -split "\r?\n")
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        $line = $lines[$index]
         if ([string]::IsNullOrWhiteSpace($line)) {
             continue
         }
@@ -110,6 +112,27 @@ function Read-FrontMatter {
         if ($keyMatch.Success) {
             $key = $keyMatch.Groups[1].Value
             $value = Normalize-MemoryReference $keyMatch.Groups[2].Value
+            if ($value -eq "|" -or $value -eq ">") {
+                $folded = ($value -eq ">")
+                $blockLines = [System.Collections.Generic.List[string]]::new()
+                $index++
+                while ($index -lt $lines.Count) {
+                    $blockLine = $lines[$index]
+                    if ($blockLine -match "^\s{0,2}[A-Za-z0-9_-]+:\s*") {
+                        $index--
+                        break
+                    }
+                    $blockLines.Add(($blockLine -replace "^\s+", "")) | Out-Null
+                    $index++
+                }
+                if ($folded) {
+                    $metadata[$key] = ((@($blockLines) | Where-Object { $_ -ne "" }) -join " ").Trim()
+                } else {
+                    $metadata[$key] = ((@($blockLines) -join "`n") -replace "(\r?\n)+$", "")
+                }
+                $currentListKey = $null
+                continue
+            }
             if ([string]::IsNullOrWhiteSpace($value)) {
                 $metadata[$key] = @()
                 $currentListKey = $key
