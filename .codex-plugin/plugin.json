@@ -1,7 +1,7 @@
 {
   "name": "codex-memory-hub",
-  "version": "1.3.2",
-  "description": "Codex memory plugin for clean, restartable, parallel project work with legacy migration.",
+  "version": "1.3.4",
+  "description": "Codex memory plugin for clean, restartable, parallel project work with automatic memory intent detection.",
   "license": "MIT",
   "keywords": [
     "codex",
@@ -14,8 +14,8 @@
   "skills": "./skill/",
   "interface": {
     "displayName": "Codex Memory Hub",
-    "shortDescription": "Clean thread and workstream memory for Codex work.",
-    "longDescription": "Initializes a clean Codex memory layout for Windows, macOS, and Linux. The project root keeps only AGENTS.md while all memory data lives under .codex-memory with per-thread logs, workstream coordination, archive folders, automatic legacy docs/wiki migration, and safe local Git defaults.",
+    "shortDescription": "Automatic thread memory for Codex project work.",
+    "longDescription": "Initializes a clean Codex memory layout for Windows, macOS, and Linux. The project root keeps only AGENTS.md while all memory data lives under .codex-memory with per-thread logs, continues_from handoff links, automatic workstream inference, archive folders, legacy docs/wiki migration, and safe local Git defaults.",
     "developerName": "Codex Memory Hub",
     "category": "Productivity",
     "capabilities": [
@@ -23,8 +23,8 @@
     ],
     "defaultPrompt": [
       "Initialize Codex Memory Hub for this project.",
-      "List thread memories and continue.",
-      "Create a new thread memory or workstream for this task."
+      "Continue this project from memory.",
+      "Use project memory for this task, create a new thread when needed, and infer the right context automatically."
     ],
     "brandColor": "#2563EB"
   }

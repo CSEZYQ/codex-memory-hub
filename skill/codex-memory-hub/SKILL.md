@@ -1,6 +1,6 @@
 ---
 name: codex-memory-hub
-description: Use when the user creates a project, asks to set up Codex memory, wants context to survive restarted threads, wants clean per-thread memory for parallel Codex work, asks for Memory Hub, needs legacy docs/wiki memory migrated, or needs Codex to create, list, reuse, or write thread/workstream memory files.
+description: Use when the user creates a project, asks to set up Codex memory, wants context to survive restarted threads, wants clean per-thread memory for parallel Codex work, asks for Memory Hub, needs legacy docs/wiki memory migrated, or needs Codex memory to infer the right thread/workstream for ongoing project work.
 ---
 
 # Codex Memory Hub
@@ -59,12 +59,49 @@ When working in a project that has Codex Memory Hub files:
 3. Read `.codex-memory/project.md` if it exists.
 4. Scan `.codex-memory/threads/*.md`.
 5. Scan `.codex-memory/workstreams/*/workstream.md` and `.codex-memory/workstreams/*/snapshot.md` when present.
-6. List every relevant thread memory for the user, including filename plus any visible `status`, `updated`, and `scope` metadata.
-7. Ask the user to choose whether to create a new thread memory file or reuse an existing one, unless the user already specified the thread/workstream.
+6. Infer read context and write target separately from the user's request, current directory, recently changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
+7. Continue with the inferred targets without asking when confidence is high. A brief status note is fine; do not interrupt the user just to choose a thread or workstream.
 
-If no thread memory file exists, create one. If the user explicitly names a thread memory file or says to continue a specific workstream, use that file directly.
+If no thread memory file exists, create one. If no existing thread or workstream clearly matches the current task, create a new thread memory file and, when useful, a new workstream.
+
+For every new Codex conversation, create a new thread memory file by default. Existing thread memory files are read-only context by default, even when the user says to continue previous work. If the new conversation continues previous work, read the relevant old thread memories and record them in the new thread's `continues_from` metadata. Link the new thread to the matching workstream when one exists.
+
+Write to an existing thread memory only when the user explicitly names that thread file and clearly asks to reuse or continue writing that exact file.
+
+Ask the user only when automation would be risky or genuinely ambiguous:
+
+- Several plausible threads/workstreams match and choosing one would materially change the work.
+- Existing memories contain conflicting conclusions that affect the current answer.
+- The user may want to share `.codex-memory/` through Git or keep it private.
+- A destructive action is involved, such as deleting, overwriting, or consolidating memory.
 
 For legacy projects that still use `docs/wiki/`, migrate them into `.codex-memory/` automatically before normal work. Do not make the user manually reorganize old memory files. After migration, read legacy content from `.codex-memory/archive/` as historical context.
+
+## Intent Detection
+
+Treat workstreams as internal coordination, not something the user must name.
+
+Infer read context, write target, and workstream separately:
+
+- User wording, requested deliverable, and named files.
+- Current Git branch and changed paths when available.
+- `scope`, `updated`, `status`, and `workstream` metadata in thread memories.
+- `workstream.md`, `snapshot.md`, and recent event filenames.
+
+Read context is where Codex restores prior decisions, outputs, problems, and next steps. Write target is the current conversation's thread memory. Workstream is only the shared task grouping; it does not replace reading the old thread memory.
+
+High-confidence examples:
+
+- "Continue the PPT images" should read the relevant old PPT/image thread, create a new thread with `continues_from`, and attach it to the recent PPT/image workstream.
+- "Audit this change" should create a new audit thread and attach it to the related feature workstream if one exists.
+- "Let's discuss the design" should create a design/discussion thread and attach it to the matching feature or deliverable workstream when clear.
+
+Low-confidence behavior:
+
+- If the task is new or unrelated, create a new thread memory and, if useful, a new workstream with a short slug.
+- If two matches are similarly plausible, ask one concise clarification instead of dumping every memory file.
+- If the user explicitly names a thread file, honor it as read context by default; write to it only if the user clearly asks to reuse or continue writing that exact file.
+- If the user explicitly names a workstream id, attach the current thread to that workstream.
 
 ## Thread Memory Files
 
@@ -84,6 +121,8 @@ updated: <YYYY-MM-DD HH:mm>
 status: active
 scope: <task scope>
 workstream: <optional workstream id>
+continues_from:
+  - <optional prior thread memory path>
 ---
 
 # <Thread Name>
@@ -115,6 +154,8 @@ workstream: <optional workstream id>
 
 Keep thread memory factual. It is a work log, not a final project truth.
 
+Use `continues_from` only when the current thread read one or more prior thread memories as direct context. Do not use `workstream` as a substitute for this; `workstream` groups related threads, while `continues_from` records the actual predecessor context.
+
 ## Workstream Memory
 
 Use workstreams when several Codex threads collaborate on the same feature, deliverable, or discussion.
@@ -134,7 +175,7 @@ Workstream layout:
 
 Each thread may write its own event file under `events/` when it pauses, finishes, hits a blocker, or hands off important context. Prefer unique event files over rewriting a shared live status file.
 
-Before creating a workstream, list existing workstreams and reuse a matching one. If a duplicate is discovered later, mark the duplicate as archived and add `superseded_by` instead of deleting it.
+Before creating a workstream, scan existing workstreams and reuse a high-confidence match automatically. If a duplicate is discovered later, mark the duplicate as archived and add `superseded_by` instead of deleting it.
 
 Use unique event filenames:
 
@@ -154,15 +195,17 @@ If the user wants shared team memory, explain the tradeoff first: committing `.c
 
 At the end of meaningful work:
 
-1. Update the selected thread memory file under `.codex-memory/threads/`.
+1. Update the current conversation's thread memory file under `.codex-memory/threads/`.
 2. If the work belongs to a workstream, write a short event file under `.codex-memory/workstreams/<workstream-id>/events/`.
 3. Update `snapshot.md` only as a convenience summary. It must remain rebuildable from thread memories and events.
+
+Do not write to thread memories listed in `continues_from`. They are source context for the current conversation, not write targets.
 
 Do not automatically create or update legacy shared status files such as `current-status.md`, `next-actions.md`, `decisions.md`, or `session-log.md`.
 
 Project-level files are optional stable background. Update `.codex-memory/project.md` only when the user explicitly asks to summarize, consolidate, or update project-level memory.
 
-If the selected thread memory file changed while this thread was preparing to write, re-read the latest file and append carefully. If a safe append is not possible, create a new sibling thread memory file with a `-fork-<shortid>` suffix and clearly mark which file it forked from.
+If the current thread memory file changed while this thread was preparing to write, re-read the latest file and append carefully. If a safe append is not possible, create a new sibling thread memory file with a `-fork-<shortid>` suffix and clearly mark which file it forked from.
 
 ## Multi-Project Rule
 
