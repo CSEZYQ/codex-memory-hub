@@ -93,12 +93,21 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "<this-skill-dir>/scripts/memory_t
 
 If `pwsh` is unavailable on Windows, use `powershell` with the same arguments.
 
+POSIX shell, including macOS and Linux:
+
+```sh
+sh "<this-skill-dir>/scripts/memory_tools.sh" --path "<project-path>" doctor
+sh "<this-skill-dir>/scripts/memory_tools.sh" --path "<project-path>" index
+```
+
 Use `doctor` when memory looks inconsistent, after legacy migration, before sharing `.codex-memory/`, or when the user asks to audit/clean memory. It is read-only and reports:
 
 - Missing memory structure.
 - Missing Git privacy default for `.codex-memory/`.
 - Legacy `docs/wiki/` that still needs migration.
 - Broken `continues_from` links.
+- Thread workstream references that point to missing workstreams.
+- Active workstreams that have no thread references.
 - Multiple active threads continuing from the same predecessor.
 - Workstream snapshots that are missing or stale.
 - Possible secret-like strings in memory files.
@@ -109,6 +118,8 @@ Use `index` to refresh:
 - `.codex-memory/system/workstream-index.json`
 
 These indexes are generated maps, not source memory. Use them to reduce startup scanning, then open only the relevant thread/workstream files. They can be deleted and rebuilt at any time.
+
+This deterministic layer does not enforce every runtime behavior. Thread creation, writeback, and workstream matching still depend on Codex following this skill. Use `doctor` to catch drift and `index` to keep startup lookup cheap.
 
 ## Intent Detection
 

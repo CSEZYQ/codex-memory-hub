@@ -144,6 +144,8 @@ workstream -> 把三条线程归到同一功能
 ```text
 memory_tools.ps1 doctor
 memory_tools.ps1 index
+memory_tools.sh doctor
+memory_tools.sh index
 ```
 
 `doctor` 只检查，不改记忆内容。它会提示：
@@ -152,6 +154,8 @@ memory_tools.ps1 index
 记忆结构是否完整
 旧版 docs/wiki 是否还没迁移
 continues_from 是否断链
+thread 指向的 workstream 是否存在
+active workstream 是否没有任何 thread 引用
 多个 active 线程是否从同一个旧线程分叉
 workstream snapshot 是否过期
 .codex-memory/ 是否已被 Git 忽略
@@ -202,5 +206,7 @@ token
 它不是后台守护进程，不会在你没打开 Codex 时自动整理所有项目。
 
 它也不是数据库或全文知识库。
+
+它也不是强制运行时。线程创建、writeback 和 workstream 匹配仍由 Codex 按 skill 规则执行；`doctor` 负责事后检查是否跑偏，`index` 负责生成可重建索引。
 
 它适合保存 Codex 继续工作需要的摘要、进度、决策、产物位置、问题和下一步。

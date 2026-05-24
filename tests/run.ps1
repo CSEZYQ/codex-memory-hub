@@ -82,6 +82,8 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $cleanProject ".codex-memory/system")) "clean init did not create system directory"
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $cleanProject ".codex-memory/threads/.gitkeep"))) "clean init should not create ignored .gitkeep files"
     Assert-True ((Get-Content -Raw -LiteralPath (Join-Path $cleanProject ".gitignore")) -match "(?m)^\.codex-memory/\r?$") "clean init did not gitignore .codex-memory/"
+    $cleanAgents = Get-Content -Raw -LiteralPath (Join-Path $cleanProject "AGENTS.md")
+    Assert-True ($cleanAgents.IndexOf(".codex-memory/system/thread-index.json") -lt $cleanAgents.IndexOf("Scan .codex-memory/threads/")) "generated AGENTS.md should read system index before scanning threads"
 
     Invoke-MemoryToolsPowerShell $cleanProject "index" | Out-Null
     $threadIndexPath = Join-Path $cleanProject ".codex-memory/system/thread-index.json"
@@ -165,18 +167,32 @@ created: 2026-05-24 12:00
 updated: 2026-05-24 12:10
 status: active
 scope: Broken continuation.
+workstream: missing-workstream
 continues_from:
   - .codex-memory/threads/missing.md
 ---
 
 # Broken
 
-api_key: sk-testtesttesttesttesttest
+leaked token: ghp_1234567890abcdefghijklmnopqrstu
+"@
+    New-Item -ItemType Directory -Path (Join-Path $brokenProject ".codex-memory/workstreams/orphan-workstream") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $brokenProject ".codex-memory/workstreams/orphan-workstream/workstream.md") -Encoding UTF8 -Value @"
+---
+workstream: orphan-workstream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Orphan Workstream
 "@
     $brokenDoctorOutput = Invoke-MemoryToolsPowerShell $brokenProject "doctor"
     Assert-True ($brokenDoctorOutput -match "Threads: 1") "doctor should count a single thread correctly"
     Assert-True ($brokenDoctorOutput -match "BROKEN_CONTINUES_FROM") "doctor should warn about missing continues_from target"
-    Assert-True ($brokenDoctorOutput -match "POSSIBLE_SECRET") "doctor should warn about possible secrets in memory files"
+    Assert-True ($brokenDoctorOutput -match "BROKEN_WORKSTREAM_REFERENCE") "doctor should warn about missing thread workstream targets"
+    Assert-True ($brokenDoctorOutput -match "WORKSTREAM_ORPHANED") "doctor should warn about active workstreams with no thread references"
+    Assert-True ($brokenDoctorOutput -match "POSSIBLE_SECRET") "doctor should warn about common hosted-service token patterns"
 
     $legacyOverviewProject = Join-Path $TempRoot "legacy-overview"
     New-Item -ItemType Directory -Path (Join-Path $legacyOverviewProject "docs/wiki") -Force | Out-Null
@@ -218,8 +234,15 @@ printf '%s\n' "Overview only content" > "$tmp/legacy/docs/wiki/project-overview.
 printf '%s\n' "Current status content" > "$tmp/legacy/docs/wiki/current-status.md"
 sh skill/codex-memory-hub/scripts/init_project_memory.sh --path "$tmp/legacy" >/dev/null
 test -d "$tmp/legacy/.codex-memory/threads"
+test -d "$tmp/legacy/.codex-memory/system"
 test ! -e "$tmp/legacy/.codex-memory/threads/.gitkeep"
 grep -q "Overview only content" "$tmp/legacy/.codex-memory/project.md"
+index_line=$(grep -n ".codex-memory/system/thread-index.json" "$tmp/legacy/AGENTS.md" | head -n 1 | cut -d: -f1)
+thread_line=$(grep -n "Scan .codex-memory/threads/" "$tmp/legacy/AGENTS.md" | head -n 1 | cut -d: -f1)
+if [ "$index_line" -ge "$thread_line" ]; then
+  echo "shell AGENTS scans threads before reading system index" >&2
+  exit 1
+fi
 legacy_thread=$(find "$tmp/legacy/.codex-memory/threads" -name '*legacy-project-memory.md' | head -n 1)
 test -n "$legacy_thread"
 grep -q "current-status.md" "$legacy_thread"
@@ -237,6 +260,49 @@ if grep -q "Existing project memory" "$tmp/force/.codex-memory/project.md"; then
   echo "--force preserved old shell project.md content unexpectedly" >&2
   exit 1
 fi
+
+sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/legacy" index >/dev/null
+test -f "$tmp/legacy/.codex-memory/system/thread-index.json"
+test -f "$tmp/legacy/.codex-memory/system/workstream-index.json"
+
+mkdir -p "$tmp/broken/.codex-memory/threads" "$tmp/broken/.codex-memory/workstreams/orphan-workstream" "$tmp/broken/.codex-memory/archive"
+cat > "$tmp/broken/.codex-memory/index.md" <<'EOF2'
+# Index
+EOF2
+cat > "$tmp/broken/.codex-memory/project.md" <<'EOF2'
+# Project
+EOF2
+cat > "$tmp/broken/.codex-memory/threads/2026-05-24-120000-broken.md" <<'EOF2'
+---
+thread: broken
+created: 2026-05-24 12:00
+updated: 2026-05-24 12:10
+status: active
+scope: Broken continuation.
+workstream: missing-workstream
+continues_from:
+  - .codex-memory/threads/missing.md
+---
+
+# Broken
+
+leaked token: ghp_1234567890abcdefghijklmnopqrstu
+EOF2
+cat > "$tmp/broken/.codex-memory/workstreams/orphan-workstream/workstream.md" <<'EOF2'
+---
+workstream: orphan-workstream
+created: 2026-05-24
+updated: 2026-05-24
+status: active
+---
+
+# Orphan Workstream
+EOF2
+sh skill/codex-memory-hub/scripts/memory_tools.sh --path "$tmp/broken" doctor > "$tmp/broken-doctor.txt"
+grep -q "BROKEN_CONTINUES_FROM" "$tmp/broken-doctor.txt"
+grep -q "BROKEN_WORKSTREAM_REFERENCE" "$tmp/broken-doctor.txt"
+grep -q "WORKSTREAM_ORPHANED" "$tmp/broken-doctor.txt"
+grep -q "POSSIBLE_SECRET" "$tmp/broken-doctor.txt"
 '@ -replace "`r", ""
             [System.IO.File]::WriteAllText($shellRuntimePath, $shellRuntimeTests, [System.Text.UTF8Encoding]::new($false))
             bash ".codex-memory-hub-test-runtime.sh"

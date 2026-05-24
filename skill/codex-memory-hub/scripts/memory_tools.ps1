@@ -34,6 +34,16 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
 }
 
+function ConvertTo-CleanJson {
+    param(
+        [object]$Value,
+        [int]$Depth = 8
+    )
+
+    $json = $Value | ConvertTo-Json -Depth $Depth
+    return (($json -replace "(\r?\n)+$", "") + "`n")
+}
+
 function ConvertTo-RelativeMemoryPath {
     param(
         [string]$Root,
@@ -273,7 +283,7 @@ function Test-MemoryHealth {
         return $issues
     }
 
-    foreach ($requiredDirectory in @("threads", "workstreams", "archive")) {
+    foreach ($requiredDirectory in @("threads", "workstreams", "archive", "system")) {
         $directoryPath = Join-Path $MemoryRoot $requiredDirectory
         if (-not (Test-Path -LiteralPath $directoryPath)) {
             Add-DoctorIssue $issues "error" "MEMORY_DIRECTORY_MISSING" ".codex-memory/$requiredDirectory/" "Required memory directory is missing."
@@ -319,6 +329,13 @@ function Test-MemoryHealth {
             Add-DoctorIssue $issues "warning" "THREAD_STATUS_UNKNOWN" $thread.path "Thread status should be active, done, or archived."
         }
 
+        if (-not [string]::IsNullOrWhiteSpace($thread.workstream)) {
+            $workstreamDirectory = Join-Path (Join-Path $MemoryRoot "workstreams") $thread.workstream
+            if (-not (Test-Path -LiteralPath $workstreamDirectory)) {
+                Add-DoctorIssue $issues "warning" "BROKEN_WORKSTREAM_REFERENCE" $thread.path "Thread references a missing workstream: $($thread.workstream)"
+            }
+        }
+
         foreach ($reference in @($thread.continues_from)) {
             $resolved = Resolve-MemoryReferencePath $ProjectRoot (Join-Path $ProjectRoot ($thread.path -replace "/", [System.IO.Path]::DirectorySeparatorChar)) $reference
             if (-not (Test-Path -LiteralPath $resolved)) {
@@ -350,6 +367,10 @@ function Test-MemoryHealth {
         $workstreamDirectory = Join-Path $ProjectRoot ($workstream.path -replace "/", [System.IO.Path]::DirectorySeparatorChar)
         $snapshotPath = Join-Path $workstreamDirectory "snapshot.md"
         $eventsRoot = Join-Path $workstreamDirectory "events"
+        $referencedThreads = @($ThreadRecords | Where-Object { $_.workstream -eq $workstream.id })
+        if ($referencedThreads.Count -eq 0 -and $workstream.status -ne "archived") {
+            Add-DoctorIssue $issues "warning" "WORKSTREAM_ORPHANED" $workstream.path "Active workstream has no thread references."
+        }
         if ($workstream.event_count -gt 0 -and -not (Test-Path -LiteralPath $snapshotPath)) {
             Add-DoctorIssue $issues "warning" "WORKSTREAM_SNAPSHOT_MISSING" $workstream.path "Workstream has events but no snapshot.md."
         }
@@ -366,7 +387,7 @@ function Test-MemoryHealth {
         $content = Read-Utf8Text $file.FullName
         if ($content -match "(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret)\b\s*[:=]\s*['""]?[^'""\s]{8,}") {
             Add-DoctorIssue $issues "warning" "POSSIBLE_SECRET" (ConvertTo-RelativeMemoryPath $ProjectRoot $file.FullName) "Memory file contains a credential-like assignment."
-        } elseif ($content -match "(?i)\bsk-[a-z0-9_-]{12,}\b") {
+        } elseif ($content -match "(?i)(sk-[a-z0-9_-]{12,}|ghp_[a-z0-9_]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16}|eyJ[a-z0-9_-]{10,}\.eyJ[a-z0-9_-]{10,})") {
             Add-DoctorIssue $issues "warning" "POSSIBLE_SECRET" (ConvertTo-RelativeMemoryPath $ProjectRoot $file.FullName) "Memory file contains a key-like token."
         }
     }
@@ -461,8 +482,8 @@ function Invoke-Index {
 
     $threadIndexPath = Join-Path $systemRoot "thread-index.json"
     $workstreamIndexPath = Join-Path $systemRoot "workstream-index.json"
-    Write-Utf8NoBom $threadIndexPath (($threadIndex | ConvertTo-Json -Depth 8) + "`n")
-    Write-Utf8NoBom $workstreamIndexPath (($workstreamIndex | ConvertTo-Json -Depth 8) + "`n")
+    Write-Utf8NoBom $threadIndexPath (ConvertTo-CleanJson $threadIndex 8)
+    Write-Utf8NoBom $workstreamIndexPath (ConvertTo-CleanJson $workstreamIndex 8)
 
     Write-Host "Codex Memory Hub index"
     Write-Host "Project: $ProjectRoot"

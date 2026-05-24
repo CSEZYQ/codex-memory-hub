@@ -1,5 +1,13 @@
 # 更新记录
 
+## 1.4.1 - 2026-05-24
+
+- 修复初始化脚本生成的 `AGENTS.md` 启动顺序：先读取 `.codex-memory/system/` 索引，再按需打开 thread 和 workstream 原文。
+- 新增 POSIX shell 版维护工具 `memory_tools.sh`，macOS/Linux 不需要安装 PowerShell 也能运行 `doctor` 和 `index`。
+- 增强 `doctor`：检查 thread 指向不存在的 workstream、active workstream 没有任何 thread 引用、GitHub/AWS/JWT 等常见 token 形态。
+- 清理 PowerShell `index` 输出的尾部换行，避免不同 PowerShell 版本下出现多余空行。
+- README 和 skill 文档补充确定性工具的边界：它负责检查和索引，不是强制运行时。
+
 ## 1.4.0 - 2026-05-24
 
 - 新增轻量确定性维护脚本 `memory_tools.ps1`。

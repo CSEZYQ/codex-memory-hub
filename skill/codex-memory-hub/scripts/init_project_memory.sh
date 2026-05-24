@@ -122,6 +122,8 @@ ensure_local_memory_gitignore() {
 }
 
 migrate_legacy_wiki_if_needed() {
+  # POSIX sh has no portable local variables; keep names in this function
+  # explicit to avoid accidental reuse when the script grows.
   if [ ! -d "$LEGACY_WIKI_ROOT" ]; then
     return
   fi
@@ -311,17 +313,17 @@ For non-trivial work:
 
 1. Read .codex-memory/index.md.
 2. Read .codex-memory/project.md if it exists.
-3. Scan .codex-memory/threads/ for relevant thread memories.
-4. Scan .codex-memory/workstreams/ for matching workstreams and snapshots.
-5. If .codex-memory/system/thread-index.json or .codex-memory/system/workstream-index.json exists, use it as a quick map before opening full memory files.
+3. Read .codex-memory/system/thread-index.json and .codex-memory/system/workstream-index.json if they exist.
+4. Use the indexes as a quick map before opening full memory files.
+5. Scan .codex-memory/threads/ and .codex-memory/workstreams/ only as needed for relevant thread memories, workstreams, and snapshots.
 6. Infer read context and write target separately from the user request, current directory, changed files, Git branch when available, thread metadata, workstream scope, and recent snapshots.
 7. Continue with the inferred targets without asking when confidence is high.
 
 If legacy docs/wiki/ memory exists, migrate it into .codex-memory/ automatically before normal work. Do not make the user manually reorganize old memory files.
 
-When the Codex Memory Hub skill is available, use its bundled memory_tools.ps1 for deterministic maintenance:
+When the Codex Memory Hub skill is available, use its bundled memory_tools.ps1 or memory_tools.sh for deterministic maintenance:
 
-- doctor checks structure, broken continues_from links, stale workstream snapshots, Git privacy defaults, and possible secrets.
+- doctor checks structure, broken continues_from links, missing or orphaned workstreams, stale workstream snapshots, Git privacy defaults, and possible secrets.
 - index refreshes .codex-memory/system/thread-index.json and .codex-memory/system/workstream-index.json.
 
 If there is no thread memory file, create a new one. If no existing memory clearly matches the task, create a new thread memory file and, when useful, a new workstream.
